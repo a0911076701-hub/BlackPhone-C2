@@ -1,18 +1,51 @@
-name: Build APK
-on: [push, workflow_dispatch]
+name: Build and Sign APK
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - name: Build with Gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build APK
         run: gradle assembleRelease
-      - uses: actions/upload-artifact@v4
+
+      - name: Generate Keystore
+        run: |
+          keytool -genkey -v -keystore keystore.jks -alias blackphone \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass 123456 -keypass 123456 \
+            -dname "CN=BlackPhone, OU=Dev, O=Black, L=City, S=State, C=US"
+
+      - name: Sign APK
+        run: |
+          jarsigner -verbose -sigalg SHA1withRSA -digestalg SHA1 \
+            -keystore keystore.jks -storepass 123456 -keypass 123456 \
+            app/build/outputs/apk/release/app-release-unsigned.apk blackphone
+
+      - name: Align APK
+        run: |
+          $ANDROID_HOME/build-tools/34.0.0/zipalign -v -p 4 \
+            app/build/outputs/apk/release/app-release-unsigned.apk \
+            app/build/outputs/apk/release/app-release-signed.apk
+
+      - name: Upload Signed APK
+        uses: actions/upload-artifact@v4
         with:
-          name: app-release
-          path: app/build/outputs/apk/release/*.apk
+          name: BlackPhone-Signed-APK
+          path: app/build/outputs/apk/release/app-release-signed.apk
