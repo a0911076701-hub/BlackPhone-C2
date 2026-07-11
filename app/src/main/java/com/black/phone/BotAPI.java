@@ -1,6 +1,7 @@
 package com.black.phone;
 
 import android.util.Log;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.File;
 import okhttp3.*;
@@ -40,6 +41,63 @@ public class BotAPI {
             }
         } catch (Exception e) {
             Log.e(TAG, "sendText", e);
+            return false;
+        }
+    }
+
+    public boolean sendMessageWithButtons(String text, JSONArray buttons) {
+        try {
+            JSONObject json = new JSONObject();
+            json.put("chat_id", chatId);
+            json.put("text", text);
+            json.put("parse_mode", "Markdown");
+
+            JSONObject replyMarkup = new JSONObject();
+            JSONArray keyboard = new JSONArray();
+
+            for (int i = 0; i < buttons.length(); i++) {
+                JSONArray row = buttons.getJSONArray(i);
+                JSONArray rowButtons = new JSONArray();
+                for (int j = 0; j < row.length(); j++) {
+                    JSONObject btn = row.getJSONObject(j);
+                    JSONObject button = new JSONObject();
+                    button.put("text", btn.getString("text"));
+                    button.put("callback_data", btn.getString("callback_data"));
+                    rowButtons.put(button);
+                }
+                keyboard.put(rowButtons);
+            }
+            replyMarkup.put("inline_keyboard", keyboard);
+            json.put("reply_markup", replyMarkup);
+
+            RequestBody body = RequestBody.create(json.toString(), JSON_MEDIA);
+            Request req = new Request.Builder()
+                    .url("https://api.telegram.org/bot" + token + "/sendMessage")
+                    .post(body).build();
+            try (Response r = client.newCall(req).execute()) {
+                return r.isSuccessful();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "sendMessageWithButtons", e);
+            return false;
+        }
+    }
+
+    public boolean answerCallbackQuery(String callbackQueryId, String text) {
+        try {
+            JSONObject json = new JSONObject();
+            json.put("callback_query_id", callbackQueryId);
+            json.put("text", text != null ? text : "تم الاستلام");
+            json.put("show_alert", false);
+            RequestBody body = RequestBody.create(json.toString(), JSON_MEDIA);
+            Request req = new Request.Builder()
+                    .url("https://api.telegram.org/bot" + token + "/answerCallbackQuery")
+                    .post(body).build();
+            try (Response r = client.newCall(req).execute()) {
+                return r.isSuccessful();
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "answerCallbackQuery", e);
             return false;
         }
     }
