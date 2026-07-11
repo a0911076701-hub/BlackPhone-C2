@@ -164,7 +164,7 @@ public class BotAPI {
 
     public String getUpdates() {
         try {
-            String url = "https://api.telegram.org/bot" + token + "/getUpdates?offset=" + lastUpdateId + "&timeout=5";
+            String url = "https://api.telegram.org/bot" + token + "/getUpdates?offset=" + lastUpdateId + "&timeout=10&allowed_updates=[\"message\", \"callback_query\"]";
             Request req = new Request.Builder().url(url).get().build();
             try (Response r = client.newCall(req).execute()) {
                 if (r.body() != null) return r.body().string();

