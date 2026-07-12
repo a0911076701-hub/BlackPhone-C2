@@ -1,0 +1,37 @@
+name: Build BlackControl APK
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'BlackControl/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build Control APK
+        run: |
+          cd BlackControl
+          chmod +x gradlew 2>/dev/null || true
+          gradle assembleRelease
+
+      - name: Upload Control APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: BlackControl-APK
+          path: BlackControl/app/build/outputs/apk/release/*.apk
