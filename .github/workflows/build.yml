@@ -22,11 +22,8 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
-
-      - name: Build APK
-        run: ./gradlew assembleRelease
+      - name: Build APK with Gradle
+        run: gradle assembleRelease
 
       - name: Create Keystore
         run: |
