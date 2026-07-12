@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "462304523604",
+    "project_id": "black-cock-4929d",
+    "storage_bucket": "black-cock-4929d.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:462304523604:android:44d87cd81935394b07c4c1",
+        "android_client_info": {
+          "package_name": "com.black.phone"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDBizqAKWSwGsicO6eRua-5x_8VQLFKTIc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
