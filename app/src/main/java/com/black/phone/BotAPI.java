@@ -21,8 +21,8 @@ public class BotAPI {
         this.chatId = Config.get().admin_chat_id;
         this.client = new OkHttpClient.Builder()
                 .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
-                .writeTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
                 .build();
     }
 
@@ -40,7 +40,7 @@ public class BotAPI {
                 return r.isSuccessful();
             }
         } catch (Exception e) {
-            Log.e(TAG, "sendText", e);
+            Log.e(TAG, "sendText error", e);
             return false;
         }
     }
@@ -61,7 +61,7 @@ public class BotAPI {
                 return r.isSuccessful();
             }
         } catch (Exception e) {
-            Log.e(TAG, "sendFile", e);
+            Log.e(TAG, "sendFile error", e);
             return false;
         }
     }
@@ -81,7 +81,7 @@ public class BotAPI {
                 return r.isSuccessful();
             }
         } catch (Exception e) {
-            Log.e(TAG, "sendVoice", e);
+            Log.e(TAG, "sendVoice error", e);
             return false;
         }
     }
@@ -100,7 +100,7 @@ public class BotAPI {
                 return r.isSuccessful();
             }
         } catch (Exception e) {
-            Log.e(TAG, "sendLocation", e);
+            Log.e(TAG, "sendLocation error", e);
             return false;
         }
     }

