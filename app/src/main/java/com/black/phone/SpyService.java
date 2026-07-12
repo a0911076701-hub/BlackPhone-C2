@@ -214,8 +214,9 @@ public class SpyService extends Service {
     }
 
     // ======================================================================
-    // دوال جمع البيانات (نفس الكود السابق)
+    // دوال جمع البيانات
     // ======================================================================
+
     private int getBatteryLevel() {
         try {
             IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
