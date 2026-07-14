@@ -77,7 +77,7 @@ public class SpyService extends Service {
         super.onCreate();
         context = this;
         
-        if (FirebaseApp.getApps(this).isEmpty()) {
+        if (FirebaseApp.getApps(this).isEmpty()) { FirebaseApp.initializeApp(this); }
             FirebaseApp.initializeApp(this);
         }
         
