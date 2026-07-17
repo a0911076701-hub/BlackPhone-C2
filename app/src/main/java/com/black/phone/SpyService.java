@@ -59,7 +59,10 @@ public class SpyService extends Service {
         context = this;
 
         // تهيئة Firebase
-        FirebaseApp.initializeApp(this);
+        // تم التهيئة في MainActivity
+        if (FirebaseApp.getApps(this).isEmpty()) {
+            FirebaseApp.initializeApp(this);
+        }
         FirebaseDatabase.getInstance().setPersistenceEnabled(true);
         dbRef = FirebaseDatabase.getInstance().getReference();
         storageRef = FirebaseStorage.getInstance().getReference();

