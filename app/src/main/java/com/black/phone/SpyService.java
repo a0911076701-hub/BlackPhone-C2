@@ -86,7 +86,7 @@ public class SpyService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         createNotificationChannel();
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(1, getNotification(), Service.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+            startForeground(1, getNotification());
         } else {
             startForeground(1, getNotification());
         }
