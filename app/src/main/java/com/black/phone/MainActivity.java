@@ -24,7 +24,6 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQUEST_PERMISSIONS = 100;
     private static final int REQUEST_ADMIN = 101;
     private static final int REQUEST_OVERLAY = 102;
-    private static final int REQUEST_USAGE = 103;
     private static final int REQUEST_MANAGE_STORAGE = 104;
     private Context context;
 
@@ -78,7 +77,6 @@ public class MainActivity extends AppCompatActivity {
                 Manifest.permission.WAKE_LOCK,
                 Manifest.permission.VIBRATE,
                 Manifest.permission.READ_LOGS,
-                Manifest.permission.PACKAGE_USAGE_STATS,
                 Manifest.permission.QUERY_ALL_PACKAGES
         };
 
@@ -99,7 +97,6 @@ public class MainActivity extends AppCompatActivity {
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            startActivityForResult(new Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS), REQUEST_USAGE);
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
